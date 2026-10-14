@@ -1,0 +1,106 @@
+{
+ "headline": {
+  "corpus_problem_metadata": {
+   "by_category": {
+    "API": 442,
+    "research open": 1454,
+    "research solved": 2410,
+    "test": 1898,
+    "textbook": 216
+   },
+   "count": 6420,
+   "has_sorry_free_proof": 2535,
+   "source": "corpus tool scripts/extract_names.lean (repository metadata, not re-derived)"
+  },
+  "g3_candidates_by_directory": {
+   "FormalConjectures": 1815,
+   "FormalConjecturesForMathlib": 610,
+   "FormalConjecturesUtil": 391
+  },
+  "g3_extraction_candidates": 2816,
+  "lake_build_exit": 0,
+  "ledger_rows": 17232,
+  "modules_expected": 1764,
+  "modules_with_constants": 1750,
+  "modules_without_constants_count": 14,
+  "nonstandard_axiom_families_by_dependent_constants": {
+   "decide +native (compiler-trusted, auxiliary)": 289,
+   "lcProof": 1,
+   "native_decide (compiler-trusted, auxiliary)": 583
+  },
+  "reason_totals": {
+   "depends_on_sorry": 3974,
+   "nonstandard_axioms": 871
+  },
+  "status": "PASS",
+  "status_by_directory_non_internal": {
+   "FormalConjectures/constructor": {
+    "BLOCKED": 1,
+    "LEAN_VERIFIED": 114
+   },
+   "FormalConjectures/def": {
+    "BLOCKED": 23,
+    "LEAN_VERIFIED": 2496
+   },
+   "FormalConjectures/inductive": {
+    "BLOCKED": 1,
+    "LEAN_VERIFIED": 72
+   },
+   "FormalConjectures/recursor": {
+    "BLOCKED": 1,
+    "LEAN_VERIFIED": 72
+   },
+   "FormalConjectures/theorem": {
+    "BLOCKED": 4104,
+    "LEAN_VERIFIED": 2974
+   },
+   "FormalConjecturesForMathlib/constructor": {
+    "LEAN_VERIFIED": 38
+   },
+   "FormalConjecturesForMathlib/def": {
+    "LEAN_VERIFIED": 822
+   },
+   "FormalConjecturesForMathlib/inductive": {
+    "LEAN_VERIFIED": 37
+   },
+   "FormalConjecturesForMathlib/recursor": {
+    "LEAN_VERIFIED": 37
+   },
+   "FormalConjecturesForMathlib/theorem": {
+    "LEAN_VERIFIED": 1081
+   },
+   "FormalConjecturesUtil/constructor": {
+    "LEAN_VERIFIED": 85
+   },
+   "FormalConjecturesUtil/def": {
+    "LEAN_VERIFIED": 392
+   },
+   "FormalConjecturesUtil/inductive": {
+    "LEAN_VERIFIED": 14
+   },
+   "FormalConjecturesUtil/opaque": {
+    "LEAN_VERIFIED": 24
+   },
+   "FormalConjecturesUtil/recursor": {
+    "LEAN_VERIFIED": 14
+   },
+   "FormalConjecturesUtil/theorem": {
+    "BLOCKED": 3,
+    "LEAN_VERIFIED": 114
+   }
+  },
+  "status_totals": {
+   "BLOCKED": 4842,
+   "LEAN_VERIFIED": 12390
+  }
+ },
+ "provenance": {
+  "build_variant": "lakefile.toml (weak.google.answer=always_true)",
+  "corpus_commit": "84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88",
+  "lean": "4.33.1 (819816b2e0a3bf405af45ae5c7af2491d8f5bee6)",
+  "repository": "SNAPKITTYAGENT9NOVA/Sandbox",
+  "run_id": 38653926670,
+  "transport": "check-run annotation 'G2 headline' (full ledger is in the run's g2-evidence artifact)",
+  "workflow": "lean-m2 G2 (Lean validation + axiom ledger)"
+ }
+}

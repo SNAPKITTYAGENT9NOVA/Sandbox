@@ -31,6 +31,15 @@ SKIP_DIRS = {".git", ".lake", "lake-packages"}
 # ---------------------------------------------------------------- lexer
 IDENT_START = re.compile(r"[A-Za-z_À-\U0010FFFF«]")
 
+PLAIN_COMPONENT = re.compile(r"[A-Za-z_][A-Za-z0-9_'!?]*\Z")
+
+def render_name(components):
+    """Render a Lean Name the way Name.toString does for this corpus: a component that is not
+    a plain identifier (digit-initial, or containing '.') is wrapped in «». Module names are
+    component tuples; a dotted string without escaping is lossy ('Arxiv/0805.3777/X' is the
+    three components Arxiv, «0805.3777», X — not four)."""
+    return ".".join(c if PLAIN_COMPONENT.match(c) else f"«{c}»" for c in components)
+
 class HeaderError(Exception):
     pass
 
@@ -74,7 +83,7 @@ def read_ident(s, i):
             parts.append(m.group(0)); i = m.end()
         if i < n and s[i] == "." and i + 1 < n and (s[i + 1] == "«" or IDENT_START.match(s[i + 1])):
             i += 1; continue
-        return ".".join(parts), i
+        return tuple(parts), i
 
 def read_word(s, i):
     m = re.compile(r"[A-Za-z_]+").match(s, i)
@@ -106,8 +115,9 @@ def parse_header(s):
         if w2 == "all":
             # `import all X`: `all` followed by whitespace then an identifier
             imp_all = True; k = skip_ws_comments(s, j2)
-        name, k = read_ident(s, k)
-        hdr["imports"].append({"module": name, "modifiers": mods, "all": imp_all})
+        comps, k = read_ident(s, k)
+        hdr["imports"].append({"module": render_name(comps), "module_components": list(comps),
+                               "modifiers": mods, "all": imp_all})
         i = skip_ws_comments(s, k)
     hdr["header_end_offset"] = i
     return hdr
@@ -150,13 +160,14 @@ def lexical_scan(s):
             "sorry_tokens": len(re.findall(r"(?<![\w.])sorry(?![\w])", code))}
 
 # ---------------------------------------------------------------- lake targets
-def glob_match(glob, mod):
-    """Lake globs: `A` = module A; `A.*` = A and all submodules; `A.+` = strict submodules."""
+def glob_match(glob, comps):
+    """Lake globs on module components: `A` = A; `A.*` = A and submodules; `A.+` = strict submodules."""
+    comps = tuple(comps)
     if glob.endswith(".*"):
-        b = glob[:-2]; return mod == b or mod.startswith(b + ".")
+        b = tuple(glob[:-2].split(".")); return comps[:len(b)] == b
     if glob.endswith(".+"):
-        b = glob[:-2]; return mod.startswith(b + ".")
-    return mod == glob
+        b = tuple(glob[:-2].split(".")); return len(comps) > len(b) and comps[:len(b)] == b
+    return comps == tuple(glob.split("."))
 
 def lake_targets(root):
     cfg = tomllib.load(open(os.path.join(root, "lakefile.toml"), "rb"))
@@ -197,9 +208,12 @@ def main(root, out):
         top = rel.split("/")[0]
         dclass = top if top in CORPUS_DIRS else ("root" if "/" not in rel else "other")
         if rel in exe_files:
-            mod = None
+            mod, comps = None, None
         else:
-            mod = rel[:-5].replace("/", ".")
+            comps = tuple(rel[:-5].split("/"))
+            mod = render_name(comps)
+            if mod in mod_of:
+                errors.append({"file": rel, "error": f"module name collision with {mod_of[mod]}"})
             mod_of[mod] = rel
         try:
             hdr = parse_header(text); herr = None
@@ -209,18 +223,19 @@ def main(root, out):
         entries[rel] = {"path": rel, "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw),
                         "lines": text.count("\n") + (0 if text.endswith("\n") or not text else 1),
                         "directory_class": dclass, "module_name": mod,
+                        "module_components": list(comps) if comps else None,
                         "lean_module_system": hdr["module"], "prelude": hdr["prelude"],
                         "header_parse_error": herr, "imports": hdr["imports"],
                         "lexical": lexical_scan(text)}
         if rel in exe_files:
             entries[rel]["lake_exe"] = exe_files[rel]
 
-    internal_roots = set(libs) | {m.split(".")[0] for m in mod_of}
+    internal_roots = set(libs) | {entries[r]["module_components"][0] for r in mod_of.values()}
     graph, missing, external_roots = {}, [], {}
     for rel, e in entries.items():
         deps = []
         for imp in e["imports"]:
-            m = imp["module"]; r = m.split(".")[0]
+            m = imp["module"]; r = imp["module_components"][0]
             if m in mod_of:
                 imp["resolution"] = "internal"; deps.append(m)
             elif r in internal_roots:
@@ -243,7 +258,8 @@ def main(root, out):
     test_lib = cfg.get("testDriver")
     target_of = {}
     for lib, globs in libs.items():
-        seeds = [m for m in mod_of if any(glob_match(g, m) for g in globs)]
+        seeds = [m for m, r in mod_of.items()
+                 if any(glob_match(g, entries[r]["module_components"]) for g in globs)]
         for m in closure(seeds):
             target_of.setdefault(m, set()).add(lib)
     for exe, v in exes.items():
@@ -281,6 +297,8 @@ def main(root, out):
     tree_lines = "".join(f"{entries[r]['sha256']}  {r}\n" for r in files)
     summary = {
         "contract": "LEAN-M2-CC-001", "gate": "G1", "stage": "pre-elaboration",
+        "inventory_schema": "1.1.0",
+        "module_name_form": "Lean Name.toString rendering; non-identifier components wrapped in «»",
         "tool": "lean-m2/tools/g1_inventory.py", "tool_sha256": sha256_file(os.path.abspath(__file__)),
         "lean_files": len(files), "files_by_directory_class": dict(sorted(by_class.items())),
         "lean_module_system_files": sum(1 for e in entries.values() if e["lean_module_system"]),

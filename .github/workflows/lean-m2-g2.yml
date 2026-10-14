@@ -76,7 +76,7 @@ jobs:
           sha256sum "$(elan which lean)" "$(elan which lake)" | tee "$EVID/lean-executable-sha256.txt"
 
       - name: Restore corpus build cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: corpus/.lake/build
           key: fc-build-${{ env.COMMIT }}-v1
@@ -93,6 +93,13 @@ jobs:
           echo $? > "$EVID/lake-build.exit"
           tail -40 "$EVID/lake-build.log"
           echo "lake build exit: $(cat "$EVID/lake-build.exit")"
+
+      - name: Save corpus build cache (even if later steps fail)
+        if: always() && hashFiles('evidence/lake-build.exit') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: corpus/.lake/build
+          key: fc-build-${{ env.COMMIT }}-v1
 
       - name: lake test (recorded, not gating)
         working-directory: corpus
@@ -115,20 +122,25 @@ jobs:
         working-directory: corpus
         run: |
           set -euo pipefail
-          python3 - "$EVID/g1-recheck/inventory.json" > "$EVID/ledger-modules.txt" <<'PY'
+          python3 - "$EVID/g1-recheck/inventory.json" "$EVID/ledger-modules.tsv" "$RUNNER_TEMP/Ledger.lean" \
+              "$GITHUB_WORKSPACE/lean-m2/tools/g2_ledger_body.lean" <<'PY'
           import json, sys
-          inv = json.load(open(sys.argv[1]))
-          for f in inv["files"]:
-              if f["module_name"] and f["built_by_default"]:
-                  print(f["module_name"])
+          inv, tsv, ledger, body = sys.argv[1:]
+          mods = [f for f in json.load(open(inv))["files"] if f["module_components"] and f["built_by_default"]]
+          with open(tsv, "w") as t:
+              for f in mods:
+                  t.write("\t".join([f["module_name"], *f["module_components"]]) + "\n")
+          with open(ledger, "w") as o:
+              o.write("import Lean\n")
+              for f in mods:   # every component escaped with «»: always valid Lean syntax
+                  o.write("import " + ".".join("«" + c + "»" for c in f["module_components"]) + "\n")
+              o.write(open(body).read())
+          print(len(mods), "modules")
           PY
-          wc -l < "$EVID/ledger-modules.txt"
-          { echo "import Lean"; sed 's/^/import /' "$EVID/ledger-modules.txt";
-            cat "$GITHUB_WORKSPACE/lean-m2/tools/g2_ledger_body.lean"; } > "$RUNNER_TEMP/Ledger.lean"
           sha256sum "$GITHUB_WORKSPACE/lean-m2/tools/g2_ledger_body.lean" > "$EVID/ledger-body.sha256"
           set +e
           start=$(date +%s)
-          LEDGER_MODS="$EVID/ledger-modules.txt" LEDGER_OUT="$EVID/ledger.jsonl" \
+          LEDGER_MODS="$EVID/ledger-modules.tsv" LEDGER_OUT="$EVID/ledger.jsonl" \
             lake env lean "$RUNNER_TEMP/Ledger.lean" > "$EVID/ledger-run.log" 2>&1
           rc=$?
           set -e
@@ -143,7 +155,7 @@ jobs:
           python3 -I lean-m2/tools/g2_summarize.py \
             --inventory "$EVID/g1-recheck/inventory.json" \
             --ledger "$EVID/ledger.jsonl" \
-            --expected-modules "$EVID/ledger-modules.txt" \
+            --expected-modules "$EVID/ledger-modules.tsv" \
             --build-exit "$(cat "$EVID/lake-build.exit" 2>/dev/null || echo 99)" \
             --test-exit "$(cat "$EVID/lake-test.exit" 2>/dev/null || echo 99)" \
             --problems "$EVID/problems.json" \

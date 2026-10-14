@@ -6,7 +6,9 @@ and elaborates it with `lake env lean Ledger.lean` inside the pinned corpus chec
 Using Lean's own frontend means imports and environment extensions load the canonical way.
 
 Inputs (environment variables):
-  LEDGER_MODS  file with one module name per line (the modules to ledger)
+  LEDGER_MODS  TSV, one module per line: <rendered name> TAB <component> TAB <component> ...
+               Components are passed explicitly because names like Arxiv.«0805.3777».X contain
+               dots inside a component; a dotted string cannot be split back reliably.
   LEDGER_OUT   output path for JSON Lines (one object per constant)
 
 Per constant, it records:
@@ -87,11 +89,13 @@ set_option maxHeartbeats 0 in
   let env ← getEnv
   let some modsPath ← IO.getEnv "LEDGER_MODS" | throwError "LEDGER_MODS is not set"
   let some outPath ← IO.getEnv "LEDGER_OUT" | throwError "LEDGER_OUT is not set"
-  let wanted := (← IO.FS.lines modsPath).filter (· ≠ "") |>.map String.toName
+  let wanted := (← IO.FS.lines modsPath).filter (· ≠ "") |>.map fun l =>
+    let comps := (l.splitOn "\t").drop 1
+    (comps.foldl Name.mkStr .anonymous, comps)
   let memo ← IO.mkRef ({} : Std.HashMap Name (Array Name))
   let h ← IO.FS.Handle.mk outPath .write
   let mut rows := 0
-  for modName in wanted do
+  for (modName, modComps) in wanted do
     let some idx := env.header.moduleNames.findIdx? (· == modName)
       | throwError m!"LEDGER: module not in environment: {modName}"
     for ci in env.header.moduleData[idx]!.constants do
@@ -101,6 +105,7 @@ set_option maxHeartbeats 0 in
       let row := Json.mkObj [
         ("name", toJson name.toString),
         ("module", toJson modName.toString),
+        ("module_components", toJson modComps),
         ("kind", toJson (kindOf ci)),
         ("safety", toJson (safetyOf ci)),
         ("private", toJson (isPrivateName name)),

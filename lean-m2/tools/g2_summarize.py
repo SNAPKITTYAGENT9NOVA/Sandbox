@@ -37,8 +37,9 @@ def main():
     os.makedirs(a.out, exist_ok=True)
 
     inv = json.load(open(a.inventory))
-    cls_of = {f["module_name"]: f["directory_class"] for f in inv["files"] if f["module_name"]}
-    expected = [l.strip() for l in open(a.expected_modules) if l.strip()]
+    # Join on component tuples, never on dotted strings (components may contain '.').
+    cls_of = {tuple(f["module_components"]): f["directory_class"] for f in inv["files"] if f["module_components"]}
+    expected = [tuple(l.rstrip("\n").split("\t")[1:]) for l in open(a.expected_modules) if l.strip()]
 
     build_ok = a.build_exit == 0
     by = collections.defaultdict(collections.Counter)
@@ -50,9 +51,10 @@ def main():
     with open(a.ledger) as f, open(os.path.join(a.out, "verification-ledger.jsonl"), "w") as vo:
         for line in f:
             r = json.loads(line); rows += 1
-            seen_modules.add(r["module"])
+            mkey = tuple(r["module_components"])
+            seen_modules.add(mkey)
             axs = set(r["axioms"])
-            cls = cls_of.get(r["module"], "unknown")
+            cls = cls_of.get(mkey, "unknown")
             reasons = []
             if not build_ok: reasons.append("build_failed")
             if "sorryAx" in axs: reasons.append("depends_on_sorry")
@@ -73,7 +75,7 @@ def main():
                                  "axioms": sorted(axs), "g3_extraction_candidate": cand},
                                 sort_keys=True) + "\n")
 
-    missing = sorted(set(expected) - seen_modules)
+    missing = [".".join(m) for m in sorted(set(expected) - seen_modules)]
     # A module with zero constants would also be "missing" from seen_modules; the ledger
     # itself throws on modules absent from the environment, so here we only report.
     problems = None

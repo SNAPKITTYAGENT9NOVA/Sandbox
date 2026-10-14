@@ -6,12 +6,14 @@ contract:
   fail_closed: true
 
 source:
+  # Observed 2026-10-14 from google-deepmind/formal-conjectures @ 84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88.
+  # Full corpus identity and per-directory inventory: corpus.lock.yaml.
   language: Lean4
-  version: REQUIRED
-  project_root: REQUIRED
-  lean_toolchain_file_sha256: REQUIRED
-  lake_manifest_sha256: REQUIRED
-  source_tree_sha256: REQUIRED
+  version: "leanprover/lean4:v4.33.1"        # contents of the project's lean-toolchain file
+  project_root: formal-conjectures             # clone of the repository above, at that commit
+  lean_toolchain_file_sha256: 3aac669c7a910ec2389f4e4f921b605adf6ebf2d1e0c9b9cd0be4d33f3f5db71
+  lake_manifest_sha256: c8ffc0d59f492007162fe54c68396e4b9f2f305fcf69210a7fbaf0b18fcd8cd9
+  source_tree_sha256: 66015949b2da0cb5f379f1ee5aec9e782e936da1e7f8360ec5f61bfe4a0709d9   # definition: corpus.lock.yaml
   read_only: true
 
 lean:

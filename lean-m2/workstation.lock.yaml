@@ -10,7 +10,13 @@ workstation:
   compcert_source:
     repository: https://github.com/AbsInt/CompCert
     tag: v3.18
-    commit: 14d616046360a0b2611ebdfc2f98368af402e1f7   # observed via git ls-remote, 2026-10-14; enforced in Dockerfile
+    tag_commit: 14d616046360a0b2611ebdfc2f98368af402e1f7   # observed via git ls-remote, 2026-10-14
+    commit: 8135de0cc006f094e4a96aff9bb76cf716c9065a       # child of tag_commit; diff = VERSION only (3.17 -> 3.18)
+    pin_rationale: >-
+      The tagged commit's VERSION file says 3.17, so a ccomp built from it reports 3.17 and
+      fails the exact-version gate (observed in CI on native aarch64, 2026-10-14). Upstream
+      commit 8135de0 "Update CompCert version to match latest release" changes only VERSION.
+      The Dockerfile verifies tag_commit, commit, and that the diff touches only VERSION.
     configure: "-prefix /opt/compcert aarch64-linux"
   compcert_build_deps:
     ocaml: "4.14.2"

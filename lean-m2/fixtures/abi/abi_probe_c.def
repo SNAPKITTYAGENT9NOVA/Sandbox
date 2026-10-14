@@ -1,8 +1,12 @@
 DEFINITION MODULE FOR "C" abi_probe_c;
 (* Modula-2 view of the CompCert-compiled C fixture abi_probe_c.c.
    Width assumptions (LONGINT = LONGCARD = 64 bit, INTEGER = 32 bit) are
-   checked at run time by AbiLinkProbe, not assumed. *)
+   checked at run time by AbiLinkProbe, not assumed.
+   ABI rule (observed on gm2 13, aarch64, 2026-10-14): without EXPORT UNQUALIFIED, gm2
+   emits module-qualified symbols (abi_probe_c_cc_add64) even in a FOR "C" module, and
+   the link fails. EXPORT UNQUALIFIED yields the bare C names. *)
 FROM SYSTEM IMPORT ADDRESS;
+EXPORT UNQUALIFIED BinOp, cc_add64, cc_sum_buf, cc_apply;
 TYPE BinOp = PROCEDURE (LONGINT, LONGINT) : LONGINT;
 PROCEDURE cc_add64 (a, b: LONGINT) : LONGINT;
 PROCEDURE cc_sum_buf (buf: ADDRESS; len: LONGCARD; out: ADDRESS) : INTEGER;

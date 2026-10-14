@@ -5,7 +5,7 @@ library pipeline, with CompCert-gated extraction. It covers **gate G0 (toolchain
 contract `LEAN-M2-CC-001`. G1–G6 (inventory, Lean validation, extraction, CompCert
 build, Modula-2 generation, differential release) are **not implemented here yet**.
 
-This folder is independent of the Sandbox web app; nothing in the app depends on it.
+The original Sandbox web app has been removed from this repository; this folder is now its primary content.
 
 ## What's in the image
 

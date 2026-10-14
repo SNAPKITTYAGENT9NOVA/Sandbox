@@ -6,14 +6,18 @@ name: lean-m2 G2 (Lean validation + axiom ledger)
 
 on:
   pull_request:
-    paths: ['lean-m2/tools/**', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
+    paths: ['lean-m2/tools/**', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
   push:
     branches: [main]
-    paths: ['lean-m2/tools/**', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
+    paths: ['lean-m2/tools/**', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: lean-m2-g2-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   g2:
@@ -144,6 +148,28 @@ jobs:
             --test-exit "$(cat "$EVID/lake-test.exit" 2>/dev/null || echo 99)" \
             --problems "$EVID/problems.json" \
             --out "$EVID/g2"
+
+      - name: Publish evidence as annotations (job logs/artifacts are not readable from every client)
+        if: always()
+        run: |
+          A=lean-m2/scripts/annotate.sh
+          cd "$GITHUB_WORKSPACE"
+          { cat "$EVID/corpus-commit.txt" "$EVID/lean-version.txt" "$EVID/lake-version.txt" 2>/dev/null;
+            echo "build exit: $(cat "$EVID/lake-build.exit" 2>/dev/null)";
+            echo "test exit (not gating): $(cat "$EVID/lake-test.exit" 2>/dev/null)";
+            echo "extract_names exit: $(cat "$EVID/extract-names.exit" 2>/dev/null)"; } > "$RUNNER_TEMP/a1.txt"
+          $A notice "G2 toolchain and exits" "$RUNNER_TEMP/a1.txt"
+          [ -f "$EVID/g2/g2-result.json" ] && $A notice "G2 result" "$EVID/g2/g2-result.json" 120
+          if [ "$(cat "$EVID/lake-build.exit" 2>/dev/null)" != 0 ]; then
+            grep -n -E 'error|✖' "$EVID/lake-build.log" 2>/dev/null | head -60 > "$RUNNER_TEMP/a2.txt" || true
+            $A error "G2 lake build errors" "$RUNNER_TEMP/a2.txt" 60
+            $A error "G2 lake build tail" "$EVID/lake-build.log" 40
+          fi
+          if ! grep -q '^LEDGER rows=' "$EVID/ledger-run.log" 2>/dev/null; then
+            $A error "G2 ledger run" "$EVID/ledger-run.log" 60
+          fi
+          [ "$(cat "$EVID/lake-test.exit" 2>/dev/null)" = 0 ] || $A warning "G2 lake test tail" "$EVID/lake-test.log" 40
+          [ "$(cat "$EVID/extract-names.exit" 2>/dev/null)" = 0 ] || $A warning "G2 extract_names stderr" "$EVID/extract-names.stderr" 40
 
       - name: Compress large evidence
         if: always()

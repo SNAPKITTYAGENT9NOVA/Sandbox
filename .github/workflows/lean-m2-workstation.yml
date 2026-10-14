@@ -6,15 +6,19 @@ name: lean-m2 workstation (G0)
 
 on:
   pull_request:
-    paths: ['lean-m2/**', '.github/workflows/lean-m2-workstation.yml']
+    paths: ['lean-m2/docker/**', 'lean-m2/scripts/**', 'lean-m2/fixtures/**', '.github/workflows/lean-m2-workstation.yml']
   push:
     branches: [main]
-    paths: ['lean-m2/**', '.github/workflows/lean-m2-workstation.yml']
+    paths: ['lean-m2/docker/**', 'lean-m2/scripts/**', 'lean-m2/fixtures/**', '.github/workflows/lean-m2-workstation.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
+
+concurrency:
+  group: lean-m2-g0-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   IMAGE: ghcr.io/snapkittyagent9nova/lean-m2-workstation
@@ -48,9 +52,25 @@ jobs:
             "$IMAGE:ci" \
             bash -c 'OUT=/results/g0 /opt/lean-m2/scripts/probe-toolchain.sh --toolchain-only'
 
-      - name: Show G0 checks
+      - name: Show G0 checks (also as annotations, readable via the REST API)
         if: always()
-        run: cat results/g0/checks.tsv || true
+        run: |
+          cat results/g0/checks.tsv || true
+          lean-m2/scripts/annotate.sh notice "G0 checks" results/g0/checks.tsv 80
+          # one annotation per blocked check, carrying the tail of that check's own log
+          n=0
+          while IFS=$'\t' read -r st name detail; do
+            [ "$st" = BLOCKED ] || continue
+            n=$((n+1)); [ "$n" -le 8 ] || break
+            log="results/g0/${name}.log"
+            [ "$name" = abi-runtime ] && log="results/g0/abi-runtime.log"
+            if [ -f "$log" ]; then
+              { echo "detail: $detail"; tail -n 40 "$log"; } > "$RUNNER_TEMP/ann.txt"
+              lean-m2/scripts/annotate.sh error "G0 BLOCKED: $name" "$RUNNER_TEMP/ann.txt" 45
+            else
+              echo "::error title=G0 BLOCKED: $name::$detail"
+            fi
+          done < results/g0/checks.tsv
 
       - name: Upload G0 evidence
         if: always()

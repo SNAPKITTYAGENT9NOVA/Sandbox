@@ -1,0 +1,30 @@
+# Workstation image pins for LEAN-M2-CC-001.
+# Kept separate from toolchain.lock.yaml so the frozen contract schema (1.0.0) is not modified.
+# Values marked "observed" were measured; REQUIRED values block release until measured on a real build.
+workstation:
+  schema_version: "0.1.0"
+  platform: linux/arm64
+  base_image:
+    reference: ubuntu:24.04
+    digest: REQUIRED            # pin after first pull: docker image inspect --format '{{index .RepoDigests 0}}'
+  compcert_source:
+    repository: https://github.com/AbsInt/CompCert
+    tag: v3.18
+    commit: 14d616046360a0b2611ebdfc2f98368af402e1f7   # observed via git ls-remote, 2026-10-14; enforced in Dockerfile
+    configure: "-prefix /opt/compcert aarch64-linux"
+  compcert_build_deps:
+    ocaml: "4.14.2"
+    coq: "8.20.1"               # within CompCert 3.18's documented Coq 8.15.0-8.20.1 range
+    menhir: REQUIRED            # resolved by opam at build time; record observed version
+  gm2:
+    source: ubuntu-noble-archive
+    package: gm2                # noble archive lists 4:13.2.0-7ubuntu1 (GCC 13.2) with arm64; installed version is recorded by G0
+  lean:
+    installer: elan
+    default_toolchain: none     # each project's lean-toolchain decides
+  image:
+    reference: ghcr.io/snapkittyagent9nova/lean-m2-workstation:main
+    digest: REQUIRED            # from the CI build or `lean-m2 setup`
+  execution:
+    native: accepted
+    emulated: blocked-unless-LEAN_M2_ALLOW_EMULATION=1   # QEMU then joins the trusted base

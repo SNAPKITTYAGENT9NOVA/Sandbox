@@ -1,0 +1,19 @@
+{
+  "name": "lean-m2 (AArch64: Lean 4 / gm2 / CompCert 3.18)",
+  "build": {
+    "dockerfile": "../../lean-m2/docker/Dockerfile",
+    "context": "../../lean-m2",
+    "options": ["--platform=linux/arm64"]
+  },
+  "runArgs": ["--platform=linux/arm64"],
+  "remoteUser": "builder",
+  "containerEnv": {
+    "LEAN_M2_EXECUTION": "${localEnv:LEAN_M2_EXECUTION}",
+    "LEAN_M2_ALLOW_EMULATION": "${localEnv:LEAN_M2_ALLOW_EMULATION}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["leanprover.lean4"]
+    }
+  }
+}

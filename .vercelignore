@@ -22,3 +22,7 @@ tempCodeRunnerFile.js
 test-api.js
 accuracy-report.json
 accuracy-report.raw.json
+
+# lean-m2 toolchain workstation (Docker image, probe scripts): not part of the web app.
+lean-m2/
+.devcontainer/

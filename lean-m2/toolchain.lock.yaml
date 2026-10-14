@@ -1,0 +1,105 @@
+contract:
+  id: LEAN-M2-CC-001
+  schema_version: "1.0.0"
+  status: specification-frozen
+  correctness_policy: computational
+  fail_closed: true
+
+source:
+  language: Lean4
+  version: REQUIRED
+  project_root: REQUIRED
+  lean_toolchain_file_sha256: REQUIRED
+  lake_manifest_sha256: REQUIRED
+  source_tree_sha256: REQUIRED
+  read_only: true
+
+lean:
+  executable: lean
+  version: REQUIRED
+  lake_executable: lake
+  lake_version: REQUIRED
+  dependency_lock: lake-manifest.json
+  kernel_validation: required
+  unresolved_imports: reject
+  preserve_axiom_inventory: true
+
+mathir:
+  schema_version: "1.0.0"
+  canonical_serialization: REQUIRED
+  stable_declaration_ids: true
+  preserve_source_locations: true
+  preserve_dependencies: true
+  preserve_semantic_domains: true
+
+compcert:
+  executable: ccomp
+  version: "3.18"
+  target: aarch64-linux
+  object_format: ELF
+  architecture: AArch64
+  abi: AAPCS
+  c_language: C99
+  compiler_path: REQUIRED
+  compiler_sha256: REQUIRED
+  configuration_sha256: REQUIRED
+  external_toolchain:
+    preprocessor: REQUIRED
+    assembler: REQUIRED
+    linker: REQUIRED
+    sysroot: REQUIRED
+    target_triple: REQUIRED
+  unsupported_constructs: reject
+  compiler_substitution: forbidden
+
+modula2:
+  compiler: gm2
+  version: REQUIRED
+  executable_path: REQUIRED
+  executable_sha256: REQUIRED
+  gcc_version: REQUIRED
+  target_triple: REQUIRED
+  object_format: ELF
+  target_architecture: AArch64
+  target_os: Linux
+  language_dialect: REQUIRED
+  runtime_library: REQUIRED
+  runtime_version: REQUIRED
+  standard_library_fingerprint: REQUIRED
+
+abi:
+  contract_version: "1.0.0"
+  calling_convention: AAPCS64
+  endianness: little
+  pointer_width_bits: 64
+  integer_types: fixed_width
+  aggregate_arguments_by_value: forbidden
+  aggregate_returns_by_value: forbidden
+  pointer_ownership: explicit
+  buffer_lengths: explicit
+  string_encoding: UTF-8
+  symbol_manifest: required
+  layout_probe: required
+  link_probe: required
+  runtime_probe: required
+
+testing:
+  reference: Lean4
+  compare_c_and_modula2: true
+  deterministic_test_seeds: required
+  boundary_tests: required
+  property_tests: required
+  floating_point_policy: per_type
+  test_results_hash: required
+
+provenance:
+  source_hashes: required
+  generated_artifact_hashes: required
+  command_log: required
+  environment_manifest: required
+  verification_ledger: required
+
+release:
+  require_all_mandatory_gates: true
+  allow_unverified_as_verified: false
+  retain_failed_artifacts: true

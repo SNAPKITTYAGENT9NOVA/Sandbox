@@ -1,0 +1,6 @@
+DEFINITION MODULE AbiProbe;
+(* G0/G5 ABI fixture. Scalars and caller-owned buffers only (no aggregates by value). *)
+FROM SYSTEM IMPORT ADDRESS;
+PROCEDURE M2Add64 (a, b: LONGINT) : LONGINT;          (* exported to C *)
+PROCEDURE M2SumBuf (buf: ADDRESS; len: CARDINAL) : LONGINT;
+END AbiProbe.

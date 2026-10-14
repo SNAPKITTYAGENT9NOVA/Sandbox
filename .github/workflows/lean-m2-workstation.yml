@@ -1,0 +1,70 @@
+name: lean-m2 workstation (G0)
+
+# Builds the LEAN-M2-CC-001 toolchain image on a NATIVE AArch64 runner and runs the
+# G0 toolchain probe (CompCert 3.18 / gm2 / Lean via elan, linked ABI probe).
+# Publishes the image to GHCR only from main or a manual run, never from a PR.
+
+on:
+  pull_request:
+    paths: ['lean-m2/**', '.github/workflows/lean-m2-workstation.yml']
+  push:
+    branches: [main]
+    paths: ['lean-m2/**', '.github/workflows/lean-m2-workstation.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/snapkittyagent9nova/lean-m2-workstation
+
+jobs:
+  g0:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (linux/arm64, native)
+        uses: docker/build-push-action@v6
+        with:
+          context: lean-m2
+          file: lean-m2/docker/Dockerfile
+          platforms: linux/arm64
+          load: true
+          tags: ${{ env.IMAGE }}:ci
+          cache-from: type=gha,scope=lean-m2
+          cache-to: type=gha,scope=lean-m2,mode=max
+
+      - name: G0 probe (toolchain only)
+        run: |
+          mkdir -p results
+          docker run --rm --platform linux/arm64 \
+            -e LEAN_M2_EXECUTION=native \
+            -v "$PWD/results:/results" \
+            "$IMAGE:ci" \
+            bash -c 'OUT=/results/g0 /opt/lean-m2/scripts/probe-toolchain.sh --toolchain-only'
+
+      - name: Show G0 checks
+        if: always()
+        run: cat results/g0/checks.tsv || true
+
+      - name: Upload G0 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g0-toolchain-evidence
+          path: results/g0/
+
+      - name: Publish image
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag "$IMAGE:ci" "$IMAGE:main"
+          docker tag "$IMAGE:ci" "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:main"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker image inspect "$IMAGE:main" --format '{{json .RepoDigests}}' | tee results/image-digest.json

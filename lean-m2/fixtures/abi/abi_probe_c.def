@@ -1,0 +1,10 @@
+DEFINITION MODULE FOR "C" abi_probe_c;
+(* Modula-2 view of the CompCert-compiled C fixture abi_probe_c.c.
+   Width assumptions (LONGINT = LONGCARD = 64 bit, INTEGER = 32 bit) are
+   checked at run time by AbiLinkProbe, not assumed. *)
+FROM SYSTEM IMPORT ADDRESS;
+TYPE BinOp = PROCEDURE (LONGINT, LONGINT) : LONGINT;
+PROCEDURE cc_add64 (a, b: LONGINT) : LONGINT;
+PROCEDURE cc_sum_buf (buf: ADDRESS; len: LONGCARD; out: ADDRESS) : INTEGER;
+PROCEDURE cc_apply (f: BinOp; a, b: LONGINT) : LONGINT;
+END abi_probe_c.

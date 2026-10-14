@@ -24,6 +24,16 @@ import argparse, collections, json, os, sys
 
 STANDARD_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 
+def axiom_family(name):
+    """Group non-standard axioms. Lean introduces one auxiliary axiom per `native_decide` /
+    `decide +native` use (name contains `._native.`); these trust the compiled evaluator, not
+    the kernel. Everything else is reported by name."""
+    if "._native.native_decide.ax_" in name: return "native_decide (compiler-trusted, auxiliary)"
+    if "._native.decide.ax_" in name: return "decide +native (compiler-trusted, auxiliary)"
+    if "._native." in name: return "other ._native. (compiler-trusted, auxiliary)"
+    if name in ("Lean.ofReduceBool", "Lean.ofReduceNat", "Lean.trustCompiler"): return name + " (compiler trust)"
+    return name
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--inventory", required=True)
@@ -43,6 +53,8 @@ def main():
 
     build_ok = a.build_exit == 0
     by = collections.defaultdict(collections.Counter)
+    by_dir_ni = collections.defaultdict(collections.Counter)
+    reason_totals = collections.Counter()
     axiom_sets = collections.Counter()
     nonstd_axioms = collections.Counter()
     seen_modules = set()
@@ -60,10 +72,13 @@ def main():
             if "sorryAx" in axs: reasons.append("depends_on_sorry")
             other = sorted(axs - STANDARD_AXIOMS - {"sorryAx"})
             if other: reasons.append("nonstandard_axioms")
-            for x in other: nonstd_axioms[x] += 1
+            for fam in {axiom_family(x) for x in other}: nonstd_axioms[fam] += 1
             status = "LEAN_VERIFIED" if not reasons else "BLOCKED"
             key = f"{cls}/{r['kind']}"
             by[key][status] += 1
+            for x in reasons: reason_totals[x] += 1
+            if not r["internal"]:
+                by_dir_ni[f"{cls}/{r['kind']}"][status] += 1
             if not r["internal"]:
                 axiom_sets[",".join(sorted(axs)) or "(none)"] += 1
             cand = (r["kind"] == "def" and r["safety"] == "safe" and not r["noncomputable"]
@@ -102,7 +117,10 @@ def main():
         "modules_without_constants": missing,
         "status_by_directory_and_kind": {k: dict(v) for k, v in sorted(by.items())},
         "top_axiom_sets_non_internal": dict(axiom_sets.most_common(12)),
-        "nonstandard_axioms": dict(nonstd_axioms.most_common()),
+        "nonstandard_axiom_families_by_dependent_constants": dict(nonstd_axioms.most_common()),
+        "status_totals": dict(sum((collections.Counter(v) for v in by.values()), collections.Counter())),
+        "reason_totals": dict(reason_totals),
+        "status_by_directory_non_internal": {k: dict(v) for k, v in sorted(by_dir_ni.items())},
         "g3_extraction_candidates": len(candidates),
         "g3_candidates_by_directory": dict(collections.Counter(c["directory_class"] for c in candidates)),
         "corpus_problem_metadata": problems,
@@ -110,9 +128,14 @@ def main():
                        "It says nothing about translation, extraction or Modula-2."),
     }
     json.dump(result, open(os.path.join(a.out, "g2-result.json"), "w"), indent=1, sort_keys=True)
-    print(json.dumps({k: result[k] for k in ("status", "lake_build_exit", "ledger_rows",
-                     "modules_expected", "modules_with_constants", "g3_extraction_candidates",
-                     "nonstandard_axioms")}, indent=1))
+    headline = {k: result[k] for k in ("status", "lake_build_exit", "ledger_rows", "modules_expected",
+                "modules_with_constants", "status_totals", "reason_totals",
+                "nonstandard_axiom_families_by_dependent_constants", "g3_extraction_candidates",
+                "g3_candidates_by_directory", "corpus_problem_metadata")}
+    headline["modules_without_constants_count"] = len(missing)
+    headline["status_by_directory_non_internal"] = result["status_by_directory_non_internal"]
+    json.dump(headline, open(os.path.join(a.out, "g2-headline.json"), "w"), indent=1, sort_keys=True)
+    print(json.dumps(headline, indent=1, sort_keys=True))
     sys.exit(0 if status == "PASS" else 1)
 
 if __name__ == "__main__":

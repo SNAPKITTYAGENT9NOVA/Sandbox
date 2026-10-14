@@ -171,7 +171,7 @@ jobs:
             echo "test exit (not gating): $(cat "$EVID/lake-test.exit" 2>/dev/null)";
             echo "extract_names exit: $(cat "$EVID/extract-names.exit" 2>/dev/null)"; } > "$RUNNER_TEMP/a1.txt"
           $A notice "G2 toolchain and exits" "$RUNNER_TEMP/a1.txt"
-          [ -f "$EVID/g2/g2-result.json" ] && $A notice "G2 result" "$EVID/g2/g2-result.json" 120
+          [ -f "$EVID/g2/g2-headline.json" ] && $A notice "G2 headline" "$EVID/g2/g2-headline.json" 150
           if [ "$(cat "$EVID/lake-build.exit" 2>/dev/null)" != 0 ]; then
             grep -n -E 'error|✖' "$EVID/lake-build.log" 2>/dev/null | head -60 > "$RUNNER_TEMP/a2.txt" || true
             $A error "G2 lake build errors" "$RUNNER_TEMP/a2.txt" 60

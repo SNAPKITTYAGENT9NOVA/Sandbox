@@ -1,9 +1,40 @@
 # lean-m2 — LEAN-M2-CC-001 workstation
 
 A reproducible AArch64 Linux toolchain environment for the Lean 4 → Modula-2 mathematical
-library pipeline, with CompCert-gated extraction. It covers **gate G0 (toolchain probe)** of
-contract `LEAN-M2-CC-001`. G1–G6 (inventory, Lean validation, extraction, CompCert
-build, Modula-2 generation, differential release) are **not implemented here yet**.
+library pipeline, with CompCert-gated extraction. It covers **gate G0 (toolchain probe)** and the
+**pre-elaboration part of G1 (corpus inventory)** of contract `LEAN-M2-CC-001`. Lean-environment
+import resolution and declaration inventory (G1b/G2) and G3–G6 are **not implemented yet**.
+
+## Frozen corpus
+
+[google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures)
+at commit `84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88` (Apache-2.0), Lean `v4.33.1`, Mathlib `v4.33.1`.
+See `corpus.lock.yaml` for the details and `corpus/formal-conjectures/84cf7f8/` for the inventory.
+
+| Directory | `.lean` files | Role |
+|---|---|---|
+| `FormalConjectures/` | 1515 | conjecture statements |
+| `FormalConjecturesForMathlib/` | 225 | supporting definitions and results |
+| `FormalConjecturesUtil/` | 22 | elaboration / utility code |
+| `FormalConjecturesTest/` | 12 | tooling tests (test driver only) |
+| root + `scripts/` | 3 | library roots, `extract_names` executable |
+| **total** | **1777** | source tree sha256 `66015949…09d9` |
+
+Mathlib and the other Lake dependencies are pinned in `corpus.lock.yaml`. They are **not** part of the corpus.
+
+### G1 inventory tool
+
+`tools/g1_inventory.py <clone> <out>` is deterministic and makes no network calls. It:
+
+- parses headers with a lexer that understands the module system, so it is not regex-only;
+- hashes every file;
+- builds the internal import graph and a topological order;
+- reports missing internal imports and cycles;
+- computes Lake target reachability from `lakefile.toml` globs.
+
+It fails closed on any header parse error, missing internal import or cycle.
+
+**Not established yet:** that external imports (Mathlib, Lean, Batteries) resolve, and any declarations, axioms or `sorry`. Both require the Lean environment. The per-file `lexical` counts are flagged `authoritative: false`.
 
 The original Sandbox web app has been removed from this repository; this folder is now its primary content.
 

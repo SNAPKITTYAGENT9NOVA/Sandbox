@@ -1,0 +1,53 @@
+# Corpus freeze for LEAN-M2-CC-001. Every value below was observed, not assumed.
+# Regenerate the inventory with: python3 -I lean-m2/tools/g1_inventory.py <clone> <out>
+corpus:
+  schema_version: "0.1.0"
+  repository: https://github.com/google-deepmind/formal-conjectures
+  commit: 84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88
+  commit_date: "2026-10-14T16:27:22+00:00"
+  license: Apache-2.0
+  nature: conjecture-statement benchmark (statements, many with `sorry`); not a library of completed proofs
+  frozen_on: "2026-10-14"
+  lean_toolchain: "leanprover/lean4:v4.33.1"
+  file_sha256:
+    lean-toolchain: 3aac669c7a910ec2389f4e4f921b605adf6ebf2d1e0c9b9cd0be4d33f3f5db71
+    lake-manifest.json: c8ffc0d59f492007162fe54c68396e4b9f2f305fcf69210a7fbaf0b18fcd8cd9
+    lakefile.toml: ac623524a725d4efc0bc028f6c9c0e73aa9c83c36aff8537874b10102b9f5c93
+    lakefile.extract.toml: e86e8a1a197706c17ed5dce0a627d044134feb8752954bb99dfba2c3dad295b1
+  build_variants:
+    # The two lakefiles differ only in this option; the Lean environment (G2) must record which one was used.
+    lakefile.toml: {weak.google.answer: always_true}
+    lakefile.extract.toml: {weak.google.answer: postpone}
+  dependencies:   # from lake-manifest.json; Mathlib is a dependency, NOT part of the corpus
+    mathlib: {rev: 0df444a360eaa60ab8c11dca51a86af692955474, input_rev: v4.33.1, url: https://github.com/leanprover-community/mathlib4}
+    plausible: {rev: b7eb3304aeae834b12dda98993a37f6a41f6f0bb, input_rev: main, url: https://github.com/leanprover-community/plausible}
+    LeanSearchClient: {rev: 5f4d51b81cbd3f6b32b156bfad9056621a040404, input_rev: main, url: https://github.com/leanprover-community/LeanSearchClient}
+    importGraph: {rev: 16f02aa7642864af59f1ff0e384a015994db9118, input_rev: main, url: https://github.com/leanprover-community/import-graph}
+    proofwidgets: {rev: 4be2e3d5087eeb272cf5a8853b8f9dd025ef5957, input_rev: main, url: https://github.com/leanprover-community/ProofWidgets4}
+    aesop: {rev: 3448c0bcc5ce01b2d1546e483ec3620e32df3d0e, input_rev: master, url: https://github.com/leanprover-community/aesop}
+    Qq: {rev: 92c15be17b7caf78c2ad767ec40f89052d908d81, input_rev: master, url: https://github.com/leanprover-community/quote4}
+    batteries: {rev: 4488d40d070b9700d4d5a6aa342f0d40c31b2a2d, input_rev: main, url: https://github.com/leanprover-community/batteries}
+    Cli: {rev: 6130a47896ce867c6a4a55373441e59e565bad0f, input_rev: v4.33.0, url: https://github.com/leanprover/lean4-cli}
+  inventory:
+    lean_files: 1777
+    source_tree_sha256: 66015949b2da0cb5f379f1ee5aec9e782e936da1e7f8360ec5f61bfe4a0709d9
+    source_tree_sha256_definition: "sha256 of sorted (C locale) lines '<file sha256>  <relpath>\\n' over all .lean files outside .git/.lake"
+    directories:   # preserved as separate tracks; tree hash per directory uses the same definition
+      FormalConjectures: {files: 1515, built_by_default: 1515, tree_sha256: 26fc1faf6116cd932e0c8c0ed9dec80db90ebf8f3d36da81cfcebfe7c0d5c89b, role: "conjecture statements"}
+      FormalConjecturesForMathlib: {files: 225, built_by_default: 225, tree_sha256: 06c1b006f3302807f94fa788535c8b76952a45ca00caca704f6885fb91c9c35b, role: "supporting definitions and results"}
+      FormalConjecturesUtil: {files: 22, built_by_default: 22, tree_sha256: 55252452313c3a1112678f2fb867c3fef5ecfc1dcb1ba179f252e3ebceba0bba, role: "elaboration and utility code"}
+      FormalConjecturesTest: {files: 12, built_by_default: 0, tree_sha256: 3f7b2211eaef78dbf190bd32780da3384e9362dcf0dfd4856d982d01bab4037a, role: "tooling tests"}
+      root: {files: 2, built_by_default: 2, tree_sha256: c820a03046e7d902689171fc89aa29ed872dd10e261940edd3f1f29151990a0c, role: "library root modules (FormalConjecturesForMathlib.lean, FormalConjecturesUtil.lean)"}
+      other: {files: 1, built_by_default: 0, tree_sha256: 4f0a7b76dc36ea5cbb95d05be3c18e11c786b4bd3cce548cb8d7a758081499ba, role: "scripts/extract_names.lean (lake_exe root)"}
+    files_built_by_default_targets: 1764
+    internal_import_edges: 2080
+    total_import_declarations: 2638
+    external_import_roots: {"Batteries": 5, "Init": 1, "Lean": 18, "Mathlib": 531, "Qq": 3}
+    missing_internal_imports: 0
+    import_cycles: 0
+    unreachable_files: 0
+    non_module_system_files: ["FormalConjecturesTest/Util/Linters/StubLinter.lean"]
+  g1_status:
+    pre_elaboration: PASS   # header parse, hashes, internal graph, Lake target reachability
+    external_import_resolution: BLOCKED   # requires Lean v4.33.1 + pinned Mathlib build (G1b/G2)
+    declaration_inventory: BLOCKED        # requires Lean environment; lexical counts in inventory.json are non-authoritative

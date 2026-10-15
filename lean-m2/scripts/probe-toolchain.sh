@@ -79,7 +79,8 @@ fi
 if have ccomp; then
   run compcert-version ccomp -version
   grep -Eq '(^|[^0-9.])3\.18([^0-9]|$)' "$OUT/compcert-version.log" \
-    && pass compcert-3.18 "exact token 3.18" || blk compcert-3.18 "observed version is not 3.18"
+    && pass compcert-3.18 "exact token 3.18" \
+    || blk compcert-3.18 "observed banner: $(tr '\n' ' ' < "$OUT/compcert-version.log" | cut -c1-200)"
   # Configured target comes from the installed configuration file, not the version banner.
   CCROOT="$(cd "$(dirname "$(command -v ccomp)")/.." && pwd)"
   INI="$(find "$CCROOT" -name compcert.ini 2>/dev/null | head -1)"

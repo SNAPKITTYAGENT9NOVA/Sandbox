@@ -1,0 +1,197 @@
+name: lean-m2 G2 (Lean validation + axiom ledger)
+
+# Gate G2 of LEAN-M2-CC-001 on the frozen corpus (lean-m2/corpus.lock.yaml).
+# Architecture-independent, so it runs on a standard x86-64 runner.
+# Fail-closed: any blocking step fails the job, but all evidence is uploaded first.
+
+on:
+  pull_request:
+    paths: ['lean-m2/tools/**', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
+  push:
+    branches: [main]
+    paths: ['lean-m2/tools/**', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-m2-g2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  g2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      CORPUS: ${{ github.workspace }}/corpus
+      EVID: ${{ github.workspace }}/evidence
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space (Mathlib cache is large)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Fetch corpus at the locked commit
+        run: |
+          set -euo pipefail
+          COMMIT=$(awk '/^  commit:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          REPO=$(awk '/^  repository:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"
+          git init -q "$CORPUS"
+          git -C "$CORPUS" fetch -q --depth 1 "$REPO" "$COMMIT"
+          git -C "$CORPUS" checkout -q FETCH_HEAD
+          test "$(git -C "$CORPUS" rev-parse HEAD)" = "$COMMIT"
+          mkdir -p "$EVID"
+          git -C "$CORPUS" rev-parse HEAD > "$EVID/corpus-commit.txt"
+
+      - name: Verify corpus against the frozen inventory (fail closed)
+        run: |
+          set -euo pipefail
+          python3 -I lean-m2/tools/g1_inventory.py "$CORPUS" "$EVID/g1-recheck"
+          GOT=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["source_tree_sha256"])' "$EVID/g1-recheck/source-hashes.json")
+          WANT=$(awk '/source_tree_sha256:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          echo "tree sha256: got=$GOT want=$WANT"
+          test "$GOT" = "$WANT"
+          for f in lean-toolchain lake-manifest.json lakefile.toml; do
+            want=$(awk -v k="    $f:" 'index($0,k)==1{print $2; exit}' lean-m2/corpus.lock.yaml)
+            got=$(sha256sum "$CORPUS/$f" | cut -d' ' -f1)
+            echo "$f got=$got want=$want"; test "$got" = "$want"
+          done
+
+      - name: Install elan (toolchain chosen by the corpus lean-toolchain)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Record toolchain
+        working-directory: corpus
+        run: |
+          set -euo pipefail
+          lean --version | tee "$EVID/lean-version.txt"
+          lake --version | tee "$EVID/lake-version.txt"
+          sha256sum "$(elan which lean)" "$(elan which lake)" | tee "$EVID/lean-executable-sha256.txt"
+
+      - name: Restore corpus build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: corpus/.lake/build
+          key: fc-build-${{ env.COMMIT }}-v1
+
+      - name: Fetch Mathlib build cache
+        working-directory: corpus
+        run: lake exe cache get 2>&1 | tail -20
+
+      - name: lake build (default targets, lakefile.toml => weak.google.answer=always_true)
+        working-directory: corpus
+        run: |
+          set +e
+          lake build > "$EVID/lake-build.log" 2>&1
+          echo $? > "$EVID/lake-build.exit"
+          tail -40 "$EVID/lake-build.log"
+          echo "lake build exit: $(cat "$EVID/lake-build.exit")"
+
+      - name: Save corpus build cache (even if later steps fail)
+        if: always() && hashFiles('evidence/lake-build.exit') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: corpus/.lake/build
+          key: fc-build-${{ env.COMMIT }}-v1
+
+      - name: lake test (recorded, not gating)
+        working-directory: corpus
+        run: |
+          set +e
+          lake test > "$EVID/lake-test.log" 2>&1
+          echo $? > "$EVID/lake-test.exit"
+          tail -20 "$EVID/lake-test.log"
+
+      - name: Corpus metadata via its own extract_names
+        working-directory: corpus
+        run: |
+          set +e
+          lake exe extract_names --exclude=answerKinds,fileFirstAdded,fileLastModified \
+            > "$EVID/problems.json" 2> "$EVID/extract-names.stderr"
+          echo $? > "$EVID/extract-names.exit"
+          tail -5 "$EVID/extract-names.stderr"
+
+      - name: Lean-native declaration and axiom ledger
+        working-directory: corpus
+        run: |
+          set -euo pipefail
+          python3 - "$EVID/g1-recheck/inventory.json" "$EVID/ledger-modules.tsv" "$RUNNER_TEMP/Ledger.lean" \
+              "$GITHUB_WORKSPACE/lean-m2/tools/g2_ledger_body.lean" <<'PY'
+          import json, sys
+          inv, tsv, ledger, body = sys.argv[1:]
+          mods = [f for f in json.load(open(inv))["files"] if f["module_components"] and f["built_by_default"]]
+          with open(tsv, "w") as t:
+              for f in mods:
+                  t.write("\t".join([f["module_name"], *f["module_components"]]) + "\n")
+          with open(ledger, "w") as o:
+              o.write("import Lean\n")
+              for f in mods:   # every component escaped with «»: always valid Lean syntax
+                  o.write("import " + ".".join("«" + c + "»" for c in f["module_components"]) + "\n")
+              o.write(open(body).read())
+          print(len(mods), "modules")
+          PY
+          sha256sum "$GITHUB_WORKSPACE/lean-m2/tools/g2_ledger_body.lean" > "$EVID/ledger-body.sha256"
+          set +e
+          start=$(date +%s)
+          LEDGER_MODS="$EVID/ledger-modules.tsv" LEDGER_OUT="$EVID/ledger.jsonl" \
+            lake env lean "$RUNNER_TEMP/Ledger.lean" > "$EVID/ledger-run.log" 2>&1
+          rc=$?
+          set -e
+          echo "ledger exit=$rc seconds=$(( $(date +%s) - start ))" | tee -a "$EVID/ledger-run.log"
+          tail -30 "$EVID/ledger-run.log"
+          test "$rc" -eq 0
+          grep -q '^LEDGER rows=' "$EVID/ledger-run.log"
+
+      - name: Summarize (contract statuses)
+        if: always()
+        run: |
+          python3 -I lean-m2/tools/g2_summarize.py \
+            --inventory "$EVID/g1-recheck/inventory.json" \
+            --ledger "$EVID/ledger.jsonl" \
+            --expected-modules "$EVID/ledger-modules.tsv" \
+            --build-exit "$(cat "$EVID/lake-build.exit" 2>/dev/null || echo 99)" \
+            --test-exit "$(cat "$EVID/lake-test.exit" 2>/dev/null || echo 99)" \
+            --problems "$EVID/problems.json" \
+            --out "$EVID/g2"
+
+      - name: Publish evidence as annotations (job logs/artifacts are not readable from every client)
+        if: always()
+        run: |
+          A=lean-m2/scripts/annotate.sh
+          cd "$GITHUB_WORKSPACE"
+          { cat "$EVID/corpus-commit.txt" "$EVID/lean-version.txt" "$EVID/lake-version.txt" 2>/dev/null;
+            echo "build exit: $(cat "$EVID/lake-build.exit" 2>/dev/null)";
+            echo "test exit (not gating): $(cat "$EVID/lake-test.exit" 2>/dev/null)";
+            echo "extract_names exit: $(cat "$EVID/extract-names.exit" 2>/dev/null)"; } > "$RUNNER_TEMP/a1.txt"
+          $A notice "G2 toolchain and exits" "$RUNNER_TEMP/a1.txt"
+          [ -f "$EVID/g2/g2-headline.json" ] && $A notice "G2 headline" "$EVID/g2/g2-headline.json" 150
+          if [ "$(cat "$EVID/lake-build.exit" 2>/dev/null)" != 0 ]; then
+            grep -n -E 'error|✖' "$EVID/lake-build.log" 2>/dev/null | head -60 > "$RUNNER_TEMP/a2.txt" || true
+            $A error "G2 lake build errors" "$RUNNER_TEMP/a2.txt" 60
+            $A error "G2 lake build tail" "$EVID/lake-build.log" 40
+          fi
+          if ! grep -q '^LEDGER rows=' "$EVID/ledger-run.log" 2>/dev/null; then
+            $A error "G2 ledger run" "$EVID/ledger-run.log" 60
+          fi
+          [ "$(cat "$EVID/lake-test.exit" 2>/dev/null)" = 0 ] || $A warning "G2 lake test tail" "$EVID/lake-test.log" 40
+          [ "$(cat "$EVID/extract-names.exit" 2>/dev/null)" = 0 ] || $A warning "G2 extract_names stderr" "$EVID/extract-names.stderr" 40
+
+      - name: Compress large evidence
+        if: always()
+        run: |
+          cd "$EVID" && for f in ledger.jsonl g2/verification-ledger.jsonl lake-build.log problems.json; do
+            [ -f "$f" ] && gzip -9 -k "$f" && rm "$f"; done; ls -laR "$EVID" | head -50
+
+      - name: Upload G2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g2-evidence-${{ env.COMMIT }}
+          path: evidence/

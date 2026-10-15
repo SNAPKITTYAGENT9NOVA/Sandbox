@@ -49,5 +49,15 @@ corpus:
     non_module_system_files: ["FormalConjecturesTest/Util/Linters/StubLinter.lean"]
   g1_status:
     pre_elaboration: PASS   # header parse, hashes, internal graph, Lake target reachability
-    external_import_resolution: BLOCKED   # requires Lean v4.33.1 + pinned Mathlib build (G1b/G2)
-    declaration_inventory: BLOCKED        # requires Lean environment; lexical counts in inventory.json are non-authoritative
+    external_import_resolution: PASS      # lake build exit 0 on all default targets (G2 run 38653926670)
+    declaration_inventory: PASS           # Lean-native ledger, 17232 constants (corpus/formal-conjectures/84cf7f8/g2-headline.json)
+  g2_status:
+    run_id: 38653926670
+    lean: "4.33.1 (819816b2e0a3bf405af45ae5c7af2491d8f5bee6)"
+    build_variant: always_true            # Prop answer(sorry) elaborates to True; postpone variant not yet ledgered
+    lake_build_exit: 0
+    ledger_constants: 17232
+    lean_verified: 12390                  # build ok and axioms within {propext, Classical.choice, Quot.sound}
+    blocked: 4842                         # depends_on_sorry 3974, nonstandard_axioms 871 (may overlap)
+    nonstandard_axiom_families: {native_decide: 583, "decide +native": 289, lcProof: 1}
+    open_items: ["identify the single lcProof dependent", "explain 14 default-target modules with no constants", "ledger the postpone build variant"]

@@ -297,7 +297,7 @@ def run (root out : System.FilePath) : IO UInt32 := do
       targetsOf := targetsOf.insert m ((targetsOf.getD m #[]).push lib)
   for h : idx in [0:files.size] do
     if let some e := files[idx].exe then
-      for m in closure graph[idx] do
+      for m in closure graph[idx]! do
         targetsOf := targetsOf.insert m ((targetsOf.getD m #[]).push s!"exe:{e}")
 
   -- topological order (Kahn; smallest rendered name first => deterministic)

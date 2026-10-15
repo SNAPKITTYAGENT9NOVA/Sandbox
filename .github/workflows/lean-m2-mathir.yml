@@ -1,4 +1,4 @@
-name: lean-m2 MathIR v1 (generator)
+name: lean-m2 MathIR (generator)
 
 # LEAN-M2-CC-001 G3/G5 generator:
 #   job lean (x86-64): MathIR export + C/Modula-2 codegen + Lean reference vectors, inside the frozen corpus;
@@ -131,7 +131,7 @@ jobs:
         if: always()
         run: |
           A=lean-m2/scripts/annotate.sh
-          [ -f "$EVID/gen/report.txt" ] && $A notice "MathIR report" "$EVID/gen/report.txt" 120
+          [ -f "$EVID/gen/report.txt" ] && $A notice "MathIR report" "$EVID/gen/report.txt" 200
           if [ -f "$EVID/gen/progress.log" ]; then
             { grep -E 'candidates=|done' "$EVID/gen/progress.log"; echo '--- slowest steps ---';
               awk '{t=$1+0; if (NR>1) print t-p, prev; p=t; prev=$0}' "$EVID/gen/progress.log" | sort -rn | head -12; } > "$RUNNER_TEMP/p.txt"

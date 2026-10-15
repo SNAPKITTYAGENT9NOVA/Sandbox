@@ -56,12 +56,12 @@ partial def E.calls : E → List Name
   | _ => []
 
 inductive FnDef where
-  | nonrec (arity : Nat) (body : E)
+  | direct (arity : Nat) (body : E)      -- non-recursive (`nonrec` is a Lean keyword)
   | primrec (arity : Nat) (recArg : Nat) (base : E) (step : E)
   deriving Inhabited
 
 def FnDef.arity : FnDef → Nat
-  | .nonrec a _ => a
+  | .direct a _ => a
   | .primrec a _ _ _ => a
 
 partial def E.hasPow : E → Bool
@@ -71,11 +71,11 @@ partial def E.hasPow : E → Bool
   | _ => false
 
 def FnDef.hasPow : FnDef → Bool
-  | .nonrec _ e => e.hasPow
+  | .direct _ e => e.hasPow
   | .primrec _ _ b s => b.hasPow || s.hasPow
 
 def FnDef.calls : FnDef → List Name
-  | .nonrec _ b => b.calls
+  | .direct _ b => b.calls
   | .primrec _ _ b s => b.calls ++ s.calls
 
 /-! ## Reading Lean expressions -/
@@ -197,7 +197,7 @@ def extract (n : Name) (arity : Nat) : MetaM (Except String FnDef) := do
     lambdaTelescope v fun xs body => do
       if xs.size != arity then return .error "body arity differs from type arity"
       match ← tr { self := n, args := xs, idx? := none, recArg := none } body with
-      | .ok e => return .ok (.nonrec arity e)
+      | .ok e => return .ok (.direct arity e)
       | .error r => return .error r
   | some eqns =>
     if eqns.size == 1 then
@@ -207,7 +207,7 @@ def extract (n : Name) (arity : Nat) : MetaM (Except String FnDef) := do
         let largs := lhs.getAppArgs
         unless largs.all (·.isFVar) && largs.size == arity do return .error "pattern-matching single equation"
         match ← tr { self := n, args := largs, idx? := none, recArg := none } rhs with
-        | .ok e => return .ok (.nonrec arity e)
+        | .ok e => return .ok (.direct arity e)
         | .error r => return .error r
     else if eqns.size == 2 then
       -- expect: one equation with argument j = 0, one with argument j = m + 1
@@ -311,7 +311,7 @@ def cFunction (sym : Name → String) (n : Name) (d : FnDef) : String :=
   let body : CGM Unit := do
     emitC "  if (out == 0) return LM2_ERR_NULL;"
     match d with
-    | .nonrec _ e =>
+    | .direct _ e =>
       let r ← cExpr sym "  " e
       emitC s!"  *out = {r};"
     | .primrec _ j b s =>
@@ -380,7 +380,7 @@ def mParams (arity : Nat) : String :=
 def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
   let body : MGM Unit := do
     match d with
-    | .nonrec _ e =>
+    | .direct _ e =>
       let r ← mExpr sym "  " e
       emitM s!"  out := {r};"
     | .primrec _ j b s =>
@@ -564,7 +564,7 @@ set_option maxHeartbeats 0 in
       Json.mkObj ([("id", toJson i), ("name", toJson n.toString), ("c_symbol", toJson (cSym n)),
         ("m2_symbol", toJson (mSym n)), ("arity", toJson d.arity)] ++
         match d with
-        | .nonrec _ e => [("kind", toJson "nonrec"), ("body", e.json)]
+        | .direct _ e => [("kind", toJson "nonrec"), ("body", e.json)]
         | .primrec _ j b s => [("kind", toJson "primrec"), ("rec_arg", toJson j), ("base", b.json), ("step", s.json)])))]
   IO.FS.writeFile (out "mathir.json") (irJson.pretty ++ "\n")
   let blockedSorted := blocked.qsort (fun a b => a.1.toString < b.1.toString)

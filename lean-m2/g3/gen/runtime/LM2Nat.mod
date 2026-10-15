@@ -1,0 +1,56 @@
+IMPLEMENTATION MODULE LM2Nat;
+
+CONST
+  Max = MAX(LONGCARD);
+
+PROCEDURE Add (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+BEGIN
+  IF a > Max - b THEN RETURN TRUE END;
+  r := a + b; RETURN FALSE
+END Add;
+
+PROCEDURE Mul (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+BEGIN
+  IF (a # 0) AND (b > Max DIV a) THEN RETURN TRUE END;
+  r := a * b; RETURN FALSE
+END Mul;
+
+PROCEDURE Sub (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+BEGIN
+  IF a > b THEN r := a - b ELSE r := 0 END;
+  RETURN FALSE
+END Sub;
+
+PROCEDURE Div (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+BEGIN
+  IF b = 0 THEN r := 0 ELSE r := a DIV b END;
+  RETURN FALSE
+END Div;
+
+PROCEDURE Mod (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+BEGIN
+  IF b = 0 THEN r := a ELSE r := a MOD b END;
+  RETURN FALSE
+END Mod;
+
+PROCEDURE Pow (a, e: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+VAR
+  acc, base, k: LONGCARD;
+BEGIN
+  IF e = 0 THEN r := 1; RETURN FALSE END;
+  IF a = 0 THEN r := 0; RETURN FALSE END;
+  IF a = 1 THEN r := 1; RETURN FALSE END;
+  IF e >= 64 THEN RETURN TRUE END;
+  acc := 1; base := a; k := e;
+  LOOP
+    IF ODD(k) THEN
+      IF Mul(acc, base, acc) THEN RETURN TRUE END
+    END;
+    k := k DIV 2;
+    IF k = 0 THEN EXIT END;
+    IF Mul(base, base, base) THEN RETURN TRUE END
+  END;
+  r := acc; RETURN FALSE
+END Pow;
+
+END LM2Nat.

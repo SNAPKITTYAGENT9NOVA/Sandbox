@@ -1,0 +1,171 @@
+name: lean-m2 MathIR v1 (generator)
+
+# LEAN-M2-CC-001 G3/G5 generator:
+#   job lean (x86-64): MathIR export + C/Modula-2 codegen + Lean reference vectors, inside the frozen corpus;
+#                      also SLICE-001's Spec.lean vectors for the acceptance test
+#   job arm  (native AArch64): ccomp + gm2 build of the GENERATED code; generic differential test and
+#                      acceptance test (SLICE-001's driver and cases against the generated firstKindTerm)
+
+on:
+  pull_request:
+    paths: ['lean-m2/tools/mathir_body.lean', 'lean-m2/g3/gen/**', 'lean-m2/g3/slice001/**', 'lean-m2/scripts/annotate.sh', '.github/workflows/lean-m2-mathir.yml']
+  push:
+    branches: [main]
+    paths: ['lean-m2/tools/mathir_body.lean', 'lean-m2/g3/gen/**', 'lean-m2/g3/slice001/**', 'lean-m2/scripts/annotate.sh', '.github/workflows/lean-m2-mathir.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-m2-mathir-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      CORPUS: ${{ github.workspace }}/corpus
+      EVID: ${{ github.workspace }}/evidence
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - name: Fetch corpus at the locked commit
+        run: |
+          COMMIT=$(awk '/^  commit:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          REPO=$(awk '/^  repository:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"
+          git init -q "$CORPUS"
+          git -C "$CORPUS" fetch -q --depth 1 "$REPO" "$COMMIT"
+          git -C "$CORPUS" checkout -q FETCH_HEAD
+          test "$(git -C "$CORPUS" rev-parse HEAD)" = "$COMMIT"
+          mkdir -p "$EVID"
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: G1 inventory (Lean) and corpus verification
+        run: |
+          (cd "$CORPUS" && lean --run "$GITHUB_WORKSPACE/lean-m2/tools/G1Inventory.lean" . "$EVID/g1")
+          (cd "$EVID/g1" && grep -v '^#' "$GITHUB_WORKSPACE/lean-m2/corpus/formal-conjectures/84cf7f8/EVIDENCE.sha256" | sha256sum -c -)
+
+      - name: Restore corpus build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: corpus/.lake/build
+          key: fc-build-${{ env.COMMIT }}-v1
+
+      - name: Mathlib cache and corpus build
+        working-directory: corpus
+        run: |
+          lake exe cache get 2>&1 | tail -3
+          lake build 2>&1 | tail -5
+
+      - name: MathIR export, codegen and reference vectors
+        working-directory: corpus
+        run: |
+          set -euo pipefail
+          python3 - "$EVID/g1/inventory.json" "$EVID/modules.tsv" "$RUNNER_TEMP/MathIR.lean" \
+              "$GITHUB_WORKSPACE/lean-m2/tools/mathir_body.lean" <<'PY'
+          import json, sys
+          inv, tsv, out, body = sys.argv[1:]
+          mods = [f for f in json.load(open(inv))["files"] if f["module_components"] and f["built_by_default"]]
+          with open(tsv, "w") as t:
+              for f in mods:
+                  t.write("\t".join([f["module_name"], *f["module_components"]]) + "\n")
+          with open(out, "w") as o:
+              o.write("import Lean\n")
+              for f in mods:
+                  o.write("import " + ".".join("«" + c + "»" for c in f["module_components"]) + "\n")
+              o.write(open(body).read())
+          PY
+          set +e
+          start=$(date +%s)
+          MATHIR_OUT="$EVID/gen" MATHIR_MODS="$EVID/modules.tsv" lake env lean "$RUNNER_TEMP/MathIR.lean" > "$EVID/mathir.log" 2>&1
+          rc=$?; set -e
+          echo "mathir exit=$rc seconds=$(( $(date +%s) - start ))" | tee -a "$EVID/mathir.log"
+          tail -30 "$EVID/mathir.log"
+          test $rc -eq 0
+          grep -q '^MATHIR candidates=' "$EVID/mathir.log"
+          (cd "$EVID/gen" && sha256sum *) | tee "$EVID/gen.sha256"
+
+      - name: SLICE-001 vectors (acceptance input)
+        working-directory: corpus
+        run: |
+          SLICE_OUT="$EVID/slice001" lake env lean "$GITHUB_WORKSPACE/lean-m2/g3/slice001/Spec.lean" > "$EVID/spec.log" 2>&1
+          grep '^SLICE001 cases=' "$EVID/spec.log"
+
+      - name: Publish evidence as annotations
+        if: always()
+        run: |
+          A=lean-m2/scripts/annotate.sh
+          [ -f "$EVID/gen/report.txt" ] && $A notice "MathIR report" "$EVID/gen/report.txt" 120
+          if ! grep -q '^MATHIR candidates=' "$EVID/mathir.log" 2>/dev/null; then
+            grep -n -E 'error' "$EVID/mathir.log" | head -40 > "$RUNNER_TEMP/e.txt" || true
+            $A error "MathIR errors (first 40)" "$RUNNER_TEMP/e.txt" 40
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mathir-lean
+          path: evidence/
+
+  arm:
+    needs: lean
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mathir-lean
+          path: lean-evidence
+
+      - name: Generated files are exactly the Lean job's
+        run: cd lean-evidence/gen && sha256sum -c ../gen.sha256
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build toolchain image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: lean-m2
+          file: lean-m2/docker/Dockerfile
+          platforms: linux/arm64
+          load: true
+          tags: lean-m2-workstation:mathir
+          cache-from: type=gha,scope=lean-m2
+          cache-to: type=gha,scope=lean-m2,mode=max
+
+      - name: CompCert + gm2 build of generated code; differential and acceptance tests
+        run: |
+          mkdir -p out
+          docker run --rm --platform linux/arm64 -u "$(id -u):$(id -g)" \
+            -v "$PWD/lean-m2:/lm2:ro" -v "$PWD/lean-evidence:/ev:ro" -v "$PWD/out:/out" \
+            lean-m2-workstation:mathir \
+            bash /lm2/g3/gen/run.sh /lm2 /ev/gen /ev/slice001 /out
+
+      - name: Publish evidence as annotations
+        if: always()
+        run: |
+          A=lean-m2/scripts/annotate.sh
+          { grep -E 'MATHIR|SLICE001|exit=|machine=' out/build.log || true; } > "$RUNNER_TEMP/r.txt"
+          $A notice "MathIR ARM results" "$RUNNER_TEMP/r.txt" 40
+          if ! grep -q 'DIFFERENTIAL: PASS' out/gen-test.log 2>/dev/null || ! grep -q 'DIFFERENTIAL: PASS' out/acceptance.log 2>/dev/null; then
+            grep -n -E 'error|Error|BLOCKED|UNSOUND|FAIL' out/build.log | head -40 > "$RUNNER_TEMP/e.txt" || true
+            $A error "MathIR ARM failures (first 40)" "$RUNNER_TEMP/e.txt" 40
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mathir-arm
+          path: out/

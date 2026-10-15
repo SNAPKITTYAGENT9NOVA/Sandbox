@@ -111,7 +111,7 @@ def corpusDirs : List String :=
 /-- Recursively list `.lean` files as relative path component lists, skipping VCS/build dirs. -/
 partial def walk (root : System.FilePath) (rel : List String) : IO (Array (List String)) := do
   let mut out := #[]
-  let dir := rel.foldl (· / ·) root
+  let dir := rel.foldl (fun (p : System.FilePath) (c : String) => p / c) root
   for entry in ← dir.readDir do
     let name := entry.fileName
     if ← entry.path.isDir then
@@ -226,7 +226,7 @@ def run (root out : System.FilePath) : IO UInt32 := do
   let mut errors : Array (String × String) := #[]
   for comps in paths do
     let rel := relString comps
-    let raw ← IO.FS.readBinFile (comps.foldl (· / ·) root)
+    let raw ← IO.FS.readBinFile (comps.foldl (fun (p : System.FilePath) (c : String) => p / c) root)
     let text := String.fromUTF8! raw
     let top := comps.head!
     let dclass := if corpusDirs.contains top then top else if comps.length == 1 then "root" else "other"

@@ -98,19 +98,19 @@ partial def E.heavy (e : E) : Bool :=
 
 inductive FnDef where
   | direct (arity : Nat) (body : E)                                    -- non-recursive
-  | rec    (arity : Nat) (recArg : Nat) (bases : List E) (step : E)    -- K = bases.length ≥ 1
+  | recur  (arity : Nat) (recArg : Nat) (bases : List E) (step : E)    -- K = bases.length ≥ 1 (`rec` is the auto-generated recursor)
 
 instance : Inhabited FnDef := ⟨.direct 0 default⟩
 
 def FnDef.arity : FnDef → Nat
-  | .direct a _ | .rec a _ _ _ => a
+  | .direct a _ | .recur a _ _ _ => a
 
 def FnDef.exprs : FnDef → List E
   | .direct _ b => [b]
-  | .rec _ _ bs s => bs ++ [s]
+  | .recur _ _ bs s => bs ++ [s]
 
 def FnDef.calls (d : FnDef) : List Name := d.exprs.flatMap E.calls
-def FnDef.heavy (d : FnDef) : Bool := (match d with | .rec .. => true | _ => false) || d.exprs.any E.heavy
+def FnDef.heavy (d : FnDef) : Bool := (match d with | .recur .. => true | _ => false) || d.exprs.any E.heavy
 
 /-! ## Reading Lean expressions -/
 
@@ -162,6 +162,9 @@ structure Ctx where
 
 abbrev TrM := ExceptT String MetaM
 
+/-- Block with a reason. (`bail` alone is ambiguous here: MetaM's `Exception` is also throwable.) -/
+def bail {α : Type} (msg : String) : TrM α := throwThe String msg
+
 def fresh (c : Ctx) : TrM Nat := do
   let n ← c.ctr.get
   c.ctr.set (n + 1)
@@ -179,7 +182,7 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     if c.idx? == some e then return .idx
     if let some (_, id) := c.loops.find? (·.1 == e) then return .lvar id
     if let some i := c.args.findIdx? (· == e) then return .arg i
-    throw "free variable not an argument"
+    bail "free variable not an argument"
   if let some (op, a, b) := binOp? e then return .bin op (← tr c a) (← tr c b)
   if e.isAppOfArity ``Nat.succ 1 then return .bin "add" (← tr c e.appArg!) (.lit 1)
   let (fn, args) := e.getAppFnArgs
@@ -195,11 +198,11 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if fn == `Nat.minFac && args.size == 1 then return .prim "minfac" [← tr c args[0]!]
   -- if-then-else on a decidable predicate
   if fn == ``ite && args.size == 5 then
-    unless isNatTy args[0]! do throw "ite at a non-ℕ type"
+    unless isNatTy args[0]! do bail "ite at a non-ℕ type"
     return .ite (← trProp c args[1]!) (← tr c args[3]!) (← tr c args[4]!)
   -- ∑ / ∏ over a ℕ range
   if (fn == `Finset.sum || fn == `Finset.prod) && args.size == 5 then
-    unless isNatTy args[0]! && isNatTy args[1]! do throw s!"{fn} over a non-ℕ type"
+    unless isNatTy args[0]! && isNatTy args[1]! do bail s!"{fn} over a non-ℕ type"
     let id ← fresh c
     let (lo, hi, incl, filt) ← source c id args[3]!
     let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
@@ -207,21 +210,21 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     return .fold (if fn == `Finset.sum then "sum" else "prod") id lo hi incl filt body
   -- Finset.card of a (filtered) ℕ range
   if fn == `Finset.card && args.size == 2 then
-    unless isNatTy args[0]! do throw "Finset.card over a non-ℕ type"
+    unless isNatTy args[0]! do bail "Finset.card over a non-ℕ type"
     let id ← fresh c
     let (lo, hi, incl, filt) ← source c id args[1]!
     return .fold "count" id lo hi incl filt (.lit 1)
   -- recursive call
   if fn == c.self then
-    let some j := c.recArg | throw "recursion in a non-recursive equation"
-    let some m := c.idx? | throw "recursive call outside the step equation"
-    if args.size != c.args.size then throw "partial recursive call"
+    let some j := c.recArg | bail "recursion in a non-recursive equation"
+    let some m := c.idx? | bail "recursive call outside the step equation"
+    if args.size != c.args.size then bail "partial recursive call"
     for h : i in [0:args.size] do
       if i != j then
-        unless args[i] == c.args[i]! do throw "non-primitive recursion (arguments change)"
+        unless args[i] == c.args[i]! do bail "non-primitive recursion (arguments change)"
     match offsetPattern? args[j]! with
-    | some (m', d) => if m' == m && d < c.K then return .prev d else throw "recursive call outside the lookback window"
-    | none => throw "recursive call on a non-offset argument"
+    | some (m', d) => if m' == m && d < c.K then return .prev d else bail "recursive call outside the lookback window"
+    | none => bail "recursive call on a non-offset argument"
   -- call to another ℕ function: translated only if that function is translated (closure later)
   if fn != .anonymous then
     let ci ← getConstInfo fn
@@ -230,9 +233,9 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
       for x in xs do
         unless isNatTy (← inferType x) do return false
       return xs.size == args.size && xs.size ≥ 1
-    unless isNatFn do throw s!"unsupported: {fn}"
+    unless isNatFn do bail s!"unsupported: {fn}"
     return .call fn (← args.toList.mapM (tr c))
-  throw s!"unsupported expression ({e.ctorName})"
+  bail s!"unsupported expression ({e.ctorName})"
 
 /-- Translate a decidable proposition to a boolean (0 / 1) expression. -/
 partial def trProp (c : Ctx) (p : Expr) : TrM E := do
@@ -241,20 +244,20 @@ partial def trProp (c : Ctx) (p : Expr) : TrM E := do
   if p.isConstOf ``False then return .lit 0
   let (fn, args) := p.getAppFnArgs
   match fn, args with
-  | ``LT.lt, #[ty, _, a, b] => if isNatTy ty then return .cmp "lt" (← tr c a) (← tr c b) else throw "comparison at a non-ℕ type"
-  | ``LE.le, #[ty, _, a, b] => if isNatTy ty then return .cmp "le" (← tr c a) (← tr c b) else throw "comparison at a non-ℕ type"
-  | ``GT.gt, #[ty, _, a, b] => if isNatTy ty then return .cmp "lt" (← tr c b) (← tr c a) else throw "comparison at a non-ℕ type"
-  | ``GE.ge, #[ty, _, a, b] => if isNatTy ty then return .cmp "le" (← tr c b) (← tr c a) else throw "comparison at a non-ℕ type"
-  | ``Eq, #[ty, a, b] => if isNatTy ty then return .cmp "eq" (← tr c a) (← tr c b) else throw "equality at a non-ℕ type"
-  | ``Ne, #[ty, a, b] => if isNatTy ty then return .not (.cmp "eq" (← tr c a) (← tr c b)) else throw "≠ at a non-ℕ type"
+  | ``LT.lt, #[ty, _, a, b] => if isNatTy ty then return .cmp "lt" (← tr c a) (← tr c b) else bail "comparison at a non-ℕ type"
+  | ``LE.le, #[ty, _, a, b] => if isNatTy ty then return .cmp "le" (← tr c a) (← tr c b) else bail "comparison at a non-ℕ type"
+  | ``GT.gt, #[ty, _, a, b] => if isNatTy ty then return .cmp "lt" (← tr c b) (← tr c a) else bail "comparison at a non-ℕ type"
+  | ``GE.ge, #[ty, _, a, b] => if isNatTy ty then return .cmp "le" (← tr c b) (← tr c a) else bail "comparison at a non-ℕ type"
+  | ``Eq, #[ty, a, b] => if isNatTy ty then return .cmp "eq" (← tr c a) (← tr c b) else bail "equality at a non-ℕ type"
+  | ``Ne, #[ty, a, b] => if isNatTy ty then return .not (.cmp "eq" (← tr c a) (← tr c b)) else bail "≠ at a non-ℕ type"
   | ``Not, #[q] => return .not (← trProp c q)
   | ``And, #[q, r] => return .and (← trProp c q) (← trProp c r)
   | ``Or, #[q, r] => return .or (← trProp c q) (← trProp c r)
-  | ``Dvd.dvd, #[ty, _, a, b] => if isNatTy ty then return .prim "dvd" [← tr c a, ← tr c b] else throw "∣ at a non-ℕ type"
+  | ``Dvd.dvd, #[ty, _, a, b] => if isNatTy ty then return .prim "dvd" [← tr c a, ← tr c b] else bail "∣ at a non-ℕ type"
   | `Nat.Prime, #[n] => return .prim "prime" [← tr c n]
-  | `Even, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 0) else throw "Even at a non-ℕ type"
-  | `Odd, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 1) else throw "Odd at a non-ℕ type"
-  | _, _ => throw s!"unsupported predicate: {fn}"
+  | `Even, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 0) else bail "Even at a non-ℕ type"
+  | `Odd, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 1) else bail "Odd at a non-ℕ type"
+  | _, _ => bail s!"unsupported predicate: {fn}"
 
 /-- A finite ℕ range, optionally filtered: `(lo, hi, inclusive, filter)`; the filter is a boolean
 expression over loop variable `id`. -/
@@ -264,20 +267,20 @@ partial def source (c : Ctx) (id : Nat) (s : Expr) : TrM (E × E × Bool × E) :
   if fn == `Finset.range && args.size == 1 then
     return (.lit 0, ← tr c args[0]!, false, .lit 1)
   if (fn == `Finset.Icc || fn == `Finset.Ico || fn == `Finset.Ioc || fn == `Finset.Ioo) && args.size ≥ 3 then
-    unless isNatTy args[0]! do throw s!"{fn} over a non-ℕ type"
+    unless isNatTy args[0]! do bail s!"{fn} over a non-ℕ type"
     let a ← tr c args[args.size - 2]!
     let b ← tr c args[args.size - 1]!
     let lo := if fn == `Finset.Ioc || fn == `Finset.Ioo then .bin "add" a (.lit 1) else a
     let incl := fn == `Finset.Icc || fn == `Finset.Ioc
     return (lo, b, incl, .lit 1)
   if fn == `Finset.filter && args.size == 4 then
-    unless isNatTy args[0]! do throw "Finset.filter over a non-ℕ type"
+    unless isNatTy args[0]! do bail "Finset.filter over a non-ℕ type"
     let (lo, hi, incl, f0) ← source c id args[3]!
     let f1 ← withLocalDeclD `k (mkConst ``Nat) fun x =>
       trProp { c with loops := c.loops.push (x, id) } (args[1]!.beta #[x])
     let filt := match f0 with | .lit 1 => f1 | _ => .and f0 f1
     return (lo, hi, incl, filt)
-  throw s!"unsupported Finset source: {fn}"
+  bail s!"unsupported Finset source: {fn}"
 
 end
 
@@ -369,7 +372,7 @@ def extract (n : Name) (arity : Nat) : MetaM (Except String FnDef) := do
     | .ok (none, e) => stepE? := some e
   let some stepE := stepE? | return .error "missing step equation"
   let basesSorted := (baseE.qsort (fun a b => a.1 < b.1)).toList.map (·.2)
-  return .ok (.rec arity j basesSorted stepE)
+  return .ok (.recur arity j basesSorted stepE)
 
 /-! ## Names -/
 
@@ -499,7 +502,7 @@ def cFunction (sym : Name → String) (n : Name) (d : FnDef) : String :=
     | .direct _ e =>
       let r ← cExpr sym "  " e
       emitC s!"  *out = {r};"
-    | .rec _ j bases step =>
+    | .recur _ j bases step =>
       let K := bases.length
       emitC s!"  uint64_t i;"
       for h : c in [0:K] do
@@ -645,7 +648,7 @@ def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
     | .direct _ e =>
       let r ← mExpr sym "  " e
       emitM s!"  out := {r};"
-    | .rec _ j bases step =>
+    | .recur _ j bases step =>
       let K := bases.length
       declM "i"; declM "nv"
       for h : c in [0:K] do
@@ -768,7 +771,7 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
 partial def evalDef (b : Budget) (defs : Std.HashMap Name FnDef) (d : FnDef) (vs : Array Nat) : IRM Nat := do
   match d with
   | .direct _ e => evalE b defs vs 0 #[] {} e
-  | .rec _ j bases step =>
+  | .recur _ j bases step =>
     let K := bases.length
     let mut w : Array Nat := #[]
     for e in bases do w := w.push (← evalE b defs vs 0 #[] {} e)
@@ -958,7 +961,7 @@ set_option maxHeartbeats 0 in
         ("m2_symbol", toJson (mSym n)), ("arity", toJson d.arity)] ++
         match d with
         | .direct _ e => [("kind", toJson "direct"), ("body", e.json)]
-        | .rec _ j bs s => [("kind", toJson "rec"), ("rec_arg", toJson j), ("lookback", toJson bs.length),
+        | .recur _ j bs s => [("kind", toJson "rec"), ("rec_arg", toJson j), ("lookback", toJson bs.length),
             ("bases", toJson (bs.map E.json)), ("step", s.json)])))]
   IO.FS.writeFile (out "mathir.json") (irJson.pretty ++ "\n")
   let blockedSorted := blocked.qsort (fun a b => a.1.toString < b.1.toString)
@@ -980,7 +983,7 @@ set_option maxHeartbeats 0 in
         consts := consts.insert k (consts.getD k 0 + 1)
   let topConsts := ((consts.toList.toArray.qsort (fun a b => a.2 > b.2)).toList.take 20).map fun (k, v) => s!"  {v}  {k}"
   let kindOf (n : Name) : String := match defs.get! n with
-    | .direct .. => "" | .rec _ _ bs _ => s!", rec K={bs.length}"
+    | .direct .. => "" | .recur _ _ bs _ => s!", rec K={bs.length}"
   let summary := s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok} skipped_over_budget={skipped} ir_fidelity_mismatches=0"
   let report := summary ++ "\ntranslated:\n" ++
     String.join (order.toList.map fun n => s!"  {n} ({(defs.get! n).arity}-ary{kindOf n})\n") ++

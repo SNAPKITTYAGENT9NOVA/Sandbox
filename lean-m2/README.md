@@ -1,15 +1,23 @@
-# lean-m2 — LEAN-M2-CC-001 workstation
+# lean-m2: LEAN-M2-CC-001 pipeline
 
-A reproducible AArch64 Linux toolchain environment for the Lean 4 → Modula-2 mathematical
-library pipeline, with CompCert-gated extraction. It covers **gate G0 (toolchain probe)** and the
-**pre-elaboration part of G1 (corpus inventory)** of contract `LEAN-M2-CC-001`. Lean-environment
-import resolution and declaration inventory (G1b/G2) and G3–G6 are **not implemented yet**.
+This folder holds the pipeline that reconstructs the Lean 4 corpus below as native Modula-2.
+Eligible computational definitions are extracted to a C subset and compiled with CompCert 3.18
+for AArch64 Linux. The pipeline runs as fail-closed gates G0–G6. Each gate writes
+machine-readable evidence and blocks on anything unmeasured.
+
+| Gate | State | Where the evidence lives |
+|---|---|---|
+| **G0** toolchain probe | **PASS** (`TOOLCHAIN_ONLY_PASS`), native AArch64 CI | `lean-m2 workstation (G0)` run annotations |
+| **G1** corpus inventory | **PASS** (pre-elaboration). The Lean-native tool is in validation (see below) | `corpus.lock.yaml`, `corpus/…/EVIDENCE.sha256` |
+| **G2** Lean validation and axiom ledger | **PASS** | `corpus/formal-conjectures/84cf7f8/g2-headline.json`, `corpus.lock.yaml` |
+| **G3** extraction to C | started: exact-domain candidate shortlist | `lean-m2 G2` run annotations |
+| **G4** CompCert build, **G5** Modula-2, **G6** differential testing and release | not started | |
 
 ## Frozen corpus
 
 [google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures)
-at commit `84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88` (Apache-2.0), Lean `v4.33.1`, Mathlib `v4.33.1`.
-See `corpus.lock.yaml` for the details. The inventory itself is regenerated rather than stored: `corpus/formal-conjectures/84cf7f8/EVIDENCE.sha256` pins its exact bytes, and CI fails if a regeneration differs.
+@ `84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88` (Apache-2.0). It pins Lean `v4.33.1` and Mathlib
+`v4.33.1`. It is a conjecture-statement benchmark: many statements are deliberately `sorry`.
 
 | Directory | `.lean` files | Role |
 |---|---|---|
@@ -20,36 +28,52 @@ See `corpus.lock.yaml` for the details. The inventory itself is regenerated rath
 | root + `scripts/` | 3 | library roots, `extract_names` executable |
 | **total** | **1777** | source tree sha256 `66015949…09d9` |
 
-Mathlib and the other Lake dependencies are pinned in `corpus.lock.yaml`. They are **not** part of the corpus.
+- **Imports:** 2,638 import declarations: 2,080 internal edges and 558 external (Mathlib 531, Lean 18, Batteries 5, Qq 3, Init 1).
+- **Graph:** no missing internal imports and no cycles.
+- **Dependencies:** Mathlib and the other Lake dependencies are pinned in `corpus.lock.yaml`. They are not part of the corpus.
+- **Inventory:** regenerated, not stored. `corpus/formal-conjectures/84cf7f8/EVIDENCE.sha256` pins the exact bytes, and CI fails if a regeneration differs.
 
-### G1 inventory tool
+## G2 results (run 38653926670, Lean 4.33.1 `819816b`, `always_true` build variant)
 
-`tools/g1_inventory.py <clone> <out>` is deterministic and makes no network calls. It:
+| | |
+|---|---|
+| `lake build` / `lake test` / `extract_names` | exit 0 / 0 / 0 |
+| Constants in the ledger | 17,232 across 1,750 modules |
+| `LEAN_VERIFIED` | 12,390: kernel-checked, axioms within {`propext`, `Classical.choice`, `Quot.sound`} |
+| `BLOCKED` | 4,842: 3,974 depend on `sorry`; 871 on non-standard axioms |
+| Non-standard axiom families | `native_decide` 583, `decide +native` 289, `lcProof` 1 |
+| Corpus metadata (`extract_names`) | 1,454 research-open and 2,410 research-solved statements, matching the project's published figures |
 
-- parses headers with a lexer that understands the module system, so it is not regex-only;
-- hashes every file;
-- builds the internal import graph and a topological order;
-- reports missing internal imports and cycles;
-- computes Lake target reachability from `lakefile.toml` globs.
+**Caveats:**
+- **Build variant:** in the default `always_true` build, a Prop-valued `answer(sorry)` elaborates to `True`. The `postpone` variant has not been ledgered yet.
+- **`native_decide` / `decide +native`:** these proofs trust Lean's compiled evaluator rather than the kernel, so they are deliberately **not** `LEAN_VERIFIED`.
 
-It fails closed on any header parse error, missing internal import or cycle.
+## Tools
 
-**Not established yet:** that external imports (Mathlib, Lean, Batteries) resolve, and any declarations, axioms or `sorry`. Both require the Lean environment. The per-file `lexical` counts are flagged `authoritative: false`.
-
-The original Sandbox web app has been removed from this repository; this folder is now its primary content.
-
-## What's in the image
-
-| Component | Source | Pin |
+| Tool | Gate | Notes |
 |---|---|---|
-| Base | `ubuntu:24.04`, `linux/arm64` | tag (digest: REQUIRED in `workstation.lock.yaml`) |
-| CompCert | `AbsInt/CompCert` tag `v3.18`, configured `aarch64-linux` | commit `14d6160…` enforced at build |
-| Coq / OCaml | opam | Coq 8.20.1, OCaml 4.14.2 |
-| GNU Modula-2 | Ubuntu noble `gm2` | exact version recorded by G0 |
-| Lean 4 / Lake | elan, no default toolchain | each project's `lean-toolchain` |
+| `scripts/probe-toolchain.sh` | G0 | fail-closed toolchain checks and linked ABI probe |
+| `tools/G1Inventory.lean` | G1 | **in validation.** Uses Lean's own `Parser.parseHeader` and `HeaderSyntax.imports`, Lake's own `Lake.Toml.loadToml`, and a FIPS 180-4 SHA-256 (passes the NIST vectors) |
+| `tools/g1_inventory.py` | G1 | current implementation. To be deleted once `compare_g1.py` reports the Lean tool IDENTICAL |
+| `tools/g2_ledger_body.lean` | G2 | per-constant kind, safety, escape hatches, direct `sorry`, transitive axioms, and type facts for G3 |
+| `tools/g2_summarize.py` | G2/G3 | maps the evidence to contract statuses, and filters the G3 exact-domain candidates |
+| `scripts/annotate.sh` | CI | publishes evidence as check-run annotations, readable via the REST API |
 
-CompCert is distributed under a non-commercial license by INRIA/AbsInt. Check that your use
-is permitted before building or publishing the image.
+## Toolchain image (`docker/Dockerfile`, `linux/arm64`)
+
+| Component | Pin |
+|---|---|
+| Base | `ubuntu:24.04` (digest: REQUIRED in `workstation.lock.yaml`) |
+| CompCert | commit `8135de0`: tag `v3.18` plus upstream's VERSION-only fix (the tagged commit reports 3.17). The build verifies that the diff is exactly `VERSION` |
+| Coq / OCaml | Coq 8.20.1, OCaml 4.14.2 (opam) |
+| GNU Modula-2 | Ubuntu noble `gm2`; exact version recorded by G0 |
+| Lean / Lake | elan; the toolchain is chosen by each project's `lean-toolchain` |
+
+CompCert is distributed under a non-commercial license by INRIA/AbsInt. Check that your use is permitted.
+
+**ABI rules established on native AArch64:**
+- No structs or unions are passed or returned by value.
+- A `DEFINITION MODULE FOR "C"` needs `EXPORT UNQUALIFIED`. Without it, gm2 emits module-qualified symbols (`mod_proc`) and the link fails.
 
 ## Windows workstation (Docker Desktop)
 
@@ -60,58 +84,36 @@ cd Sandbox\lean-m2\workstation
 .\lean-m2.ps1 setup                  # pull the CI-built image (or: setup -Build)
 .\lean-m2.ps1 info                   # shows native vs emulated
 .\lean-m2.ps1 probe                  # G0, toolchain only
-# copy your Lean project to D:\lean-m2\work\<name>, then:
-.\lean-m2.ps1 probe -Project <name>  # full G0 incl. lean-toolchain, lake-manifest, corpus
+.\lean-m2.ps1 probe -Project <name>  # full G0 against D:\lean-m2\work\<name>
 .\lean-m2.ps1 shell                  # bash in the container, D:\lean-m2\work at /work
 ```
 
-Docker Desktop keeps its own disk image on C: unless you move it in Docker Desktop's
-disk image location setting. Do that if C: space matters.
+- **ARM64 Windows:** the container runs natively.
+- **x64 Windows:** it runs under QEMU. G0 **blocks** unless you pass `-AllowEmulation`, which records QEMU as part of the trusted base. Building the image under emulation takes hours, so prefer `setup` (pull).
+- **Disk:** Docker Desktop keeps its disk image on C: unless you move it in its settings.
 
-### Native vs emulated
+Linux/macOS: `workstation/lean-m2.sh` has the same commands. VS Code: `.devcontainer/lean-m2/`.
 
-- **ARM64 Windows** (e.g. Snapdragon): the container runs natively. G0 can PASS.
-- **x64 Windows**: `linux/arm64` runs under QEMU. The objects are genuine AArch64 ELF, but every
-  test executed there trusts QEMU. G0 **BLOCKS** on emulation unless you run
-  `probe -AllowEmulation`, which records that QEMU is part of the trusted base.
-  Building the image under emulation takes hours; prefer `setup` (pull) over `setup -Build`.
+## CI
 
-Linux/macOS: `workstation/lean-m2.sh` has the same commands (`LEAN_M2_DATA` sets the data root).
-VS Code: `.devcontainer/lean-m2/` opens the same image.
+| Workflow | Runner | Does |
+|---|---|---|
+| `lean-m2-workstation.yml` | `ubuntu-24.04-arm` | builds the image, runs G0, and publishes `ghcr.io/snapkittyagent9nova/lean-m2-workstation` from `main` |
+| `lean-m2-g1.yml` | `ubuntu-latest` | Lean G1: SHA-256 self-test, every hash vs `sha256sum`, and a differential vs Python G1 |
+| `lean-m2-g2.yml` | `ubuntu-latest` | re-verifies the corpus, then runs `lake build`, the ledger and the summary. Corpus build cache is saved |
 
-## G0 output
+All three publish their key evidence as check-run annotations, and upload full evidence as artifacts.
 
-`results/g0-<timestamp>/g0-result.json` plus raw logs. Every check is `PASS`, `BLOCKED` or
-`NOT_EVALUATED`. Overall status:
+## Lockfiles
 
-- `PASS`: all checks passed, project given.
-- `TOOLCHAIN_ONLY_PASS`: toolchain passed; corpus deliberately not evaluated.
-- `BLOCKED`: anything else (exit code 1).
+- `toolchain.lock.yaml`: the frozen contract lockfile (schema 1.0.0). `REQUIRED` fields are blockers until measured.
+- `corpus.lock.yaml`: corpus commit, file hashes, dependency pins, per-directory tree hashes, and the G1/G2 status and open items.
+- `workstation.lock.yaml`: image pins, with the rationale for the CompCert pin.
 
-G0 checks:
+## Open items
 
-- host is aarch64 Linux, and the execution mode is declared;
-- `lean`, `lake`, `ccomp`, `gm2`, `sha256sum` and `readelf` are present;
-- CompCert version token is exactly `3.18`, and `compcert.ini` says `arch=aarch64` and `system=linux` (its hash is recorded);
-- `gm2 -dumpmachine` is `aarch64-*-linux*`;
-- both fixture objects are AArch64 ELF (via `readelf`);
-- a **linked runtime ABI probe** (`fixtures/abi/AbiLinkProbe.mod`) passes. It covers:
-  - Modula-2 → C calls,
-  - C → Modula-2 through a function pointer,
-  - 64-bit boundary values,
-  - caller-owned buffers,
-  - NULL error return,
-  - and a runtime check of the type widths;
-- the project has `lean-toolchain`, `lake-manifest.json` and at least one `.lean` file.
-
-A G0 pass certifies the toolchain only. It says nothing about extraction correctness or Lean proofs.
-
-## Files
-
-- `toolchain.lock.yaml`: the frozen contract lockfile (schema 1.0.0, unchanged; `REQUIRED` = blocker).
-- `workstation.lock.yaml`: image pins, kept separate so the frozen schema is not modified.
-- `docker/Dockerfile`: the image.
-- `scripts/probe-toolchain.sh`: the G0 probe.
-- `fixtures/abi/`: the ABI fixtures (C compiled only by `ccomp`; Modula-2 by `gm2 -fiso`).
-- `workstation/`: the launchers.
-- CI: `.github/workflows/lean-m2-workstation.yml` builds on a native `ubuntu-24.04-arm` runner, runs G0, and uploads the evidence. It publishes `ghcr.io/snapkittyagent9nova/lean-m2-workstation` from `main` only.
+- Retire the Python G1 once the Lean G1 differential is IDENTICAL.
+- Identify the single `lcProof` dependent, and explain the 14 modules with no constants.
+- Ledger the `postpone` build variant.
+- Record the base-image and published-image digests.
+- G3: choose the first exact-domain definition, then build the vertical slice Lean → C → CompCert → Modula-2 → differential test.

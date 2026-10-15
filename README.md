@@ -18,6 +18,6 @@ Nothing in this repository is a verified library yet. See the verification ledge
 
 This is a fork of [jamiedevera/Sandbox](https://github.com/jamiedevera/Sandbox), a Next.js
 deployment-risk analysis web app whose original README stated MIT licensing. The web app
-(React UI, API route, WatsonX glue, its tests and CI) was removed from this fork. It remains
-in git history before the removal commit and upstream. `bob_sessions/`, `TestCases/` and
-`BOB_DEVELOPMENT.md` are retained, unchanged, as historical records of the original project.
+(React UI, API route, WatsonX glue, its tests and CI) and its leftovers (`bob_sessions/`,
+`TestCases/`, `BOB_DEVELOPMENT.md`) were removed from this fork. They remain in git history
+and upstream.

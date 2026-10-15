@@ -24,6 +24,11 @@ import argparse, collections, json, os, sys
 
 STANDARD_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 
+# Exact, computable domains admissible for the first extraction slices (G3). Anything else in a
+# candidate's type (ℝ, Set, Finset, typeclass structures, ...) excludes it for now.
+EXACT_DOMAIN_CONSTS = {"Nat", "Int", "Bool", "List", "Fin", "Prod", "Option", "Unit", "PUnit",
+                       "Sum", "UInt8", "UInt16", "UInt32", "UInt64", "Char", "String", "Array"}
+
 def axiom_family(name):
     """Group non-standard axioms. Lean introduces one auxiliary axiom per `native_decide` /
     `decide +native` use (name contains `._native.`); these trust the compiled evaluator, not
@@ -55,6 +60,7 @@ def main():
     by = collections.defaultdict(collections.Counter)
     by_dir_ni = collections.defaultdict(collections.Counter)
     reason_totals = collections.Counter()
+    other_dependents = []
     axiom_sets = collections.Counter()
     nonstd_axioms = collections.Counter()
     seen_modules = set()
@@ -84,7 +90,15 @@ def main():
             cand = (r["kind"] == "def" and r["safety"] == "safe" and not r["noncomputable"]
                     and not r["internal"] and status == "LEAN_VERIFIED"
                     and not r["extern"] and r["implemented_by"] is None)
-            if cand: candidates.append({"name": r["name"], "module": r["module"], "directory_class": cls})
+            if cand:
+                exact = (not r.get("returns_prop", True)
+                         and set(r.get("type_consts", ["?"])) <= EXACT_DOMAIN_CONSTS)
+                candidates.append({"name": r["name"], "module": r["module"], "directory_class": cls,
+                                   "type": r.get("type_pp"), "type_consts": r.get("type_consts"),
+                                   "returns_prop": r.get("returns_prop"), "exact_domain": exact})
+            if other and not all(axiom_family(x) != x for x in other):
+                other_dependents.append({"name": r["name"], "module": r["module"],
+                                         "axioms": [x for x in other if axiom_family(x) == x]})
             vo.write(json.dumps({"name": r["name"], "module": r["module"], "directory_class": cls,
                                  "kind": r["kind"], "statuses": [status], "reasons": reasons,
                                  "axioms": sorted(axs), "g3_extraction_candidate": cand},
@@ -133,6 +147,14 @@ def main():
                 "nonstandard_axiom_families_by_dependent_constants", "g3_extraction_candidates",
                 "g3_candidates_by_directory", "corpus_problem_metadata")}
     headline["modules_without_constants_count"] = len(missing)
+    headline["modules_without_constants"] = missing
+    headline["non_family_nonstandard_axiom_dependents"] = other_dependents[:20]
+    exact = [c for c in candidates if c["exact_domain"]]
+    headline["g3_exact_domain_candidates"] = len(exact)
+    headline["g3_exact_domain_by_directory"] = dict(collections.Counter(c["directory_class"] for c in exact))
+    with open(os.path.join(a.out, "g3-exact-domain-candidates.txt"), "w") as f:
+        for c in sorted(exact, key=lambda c: (c["module"], c["name"])):
+            f.write(f"{c['name']} : {(c['type'] or '').replace(chr(10), ' ')[:160]}\n")
     headline["status_by_directory_non_internal"] = result["status_by_directory_non_internal"]
     json.dump(headline, open(os.path.join(a.out, "g2-headline.json"), "w"), indent=1, sort_keys=True)
     print(json.dumps(headline, indent=1, sort_keys=True))

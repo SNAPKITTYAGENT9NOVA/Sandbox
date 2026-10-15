@@ -1,0 +1,55 @@
+{
+  "contract": "LEAN-M2-CC-001",
+  "component": "MathIR v1 generator (fragment NatPrimRec v1)",
+  "ci_run": 38691923550,
+  "corpus_commit": "84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88",
+  "lean": "4.33.1 (819816b2e0a3bf405af45ae5c7af2491d8f5bee6)",
+  "machine": {"host": "ubuntu-24.04-arm (native aarch64)", "ccomp": "3.18", "gm2": "13.3.0 (-fiso)"},
+  "coverage": {
+    "candidates": 246,
+    "candidate_definition": "computable, safe, non-auxiliary def f : ℕ^k → ℕ (k ≤ 3) in corpus modules, no implemented_by/extern",
+    "translated": 20,
+    "translated_primitive_recursive": 8,
+    "blocked": 226,
+    "blocked_reasons": {
+      "unsupported constant": 149,
+      "calls untranslated function": 32,
+      "more than two equations (recursion beyond 0 / m+1)": 28,
+      "let-binding in body": 12,
+      "ite condition not a ℕ comparison": 4,
+      "recursion in a non-recursive equation": 1
+    },
+    "top_unsupported_constants": {"Finset.sum": 35, "Finset.card": 31, "Finset.sup": 8, "List.length": 7, "Int.natAbs": 6, "Finset.prod": 6, "Nat.ofDigits": 5}
+  },
+  "translated_functions": [
+    "CunninghamChain.firstKindTerm", "CunninghamChain.secondKindTerm", "Erdos148.u", "Erdos315.u",
+    "Mersenne.catalanMersenne", "OeisA100474.triangular", "OeisA102847.a", "OeisA108211.a", "OeisA1146.a",
+    "OeisA119563.a", "OeisA120424.f", "OeisA153330.collatzStep", "OeisA160324.polygonalNumber",
+    "OeisA267581.caRule167", "OeisA267581.oeisFloorTerm", "OeisA53067.triangular", "OeisA7013.a",
+    "PollocksConjecture.tetrahedral", "OeisA160324.hexagonal", "OeisA160324.pentagonal"
+  ],
+  "evidence": {
+    "extraction_fidelity": {"check": "budgeted IR interpreter == Lean's compiled corpus definition, on every evaluated input", "mismatches": 0},
+    "reference_cases": 5197, "reference_ok": 3502, "reference_overflow": 1695,
+    "skipped_over_budget": 1971,
+    "differential": {
+      "c_compcert": {"unsound": 0, "incomplete": 765},
+      "native_modula2": {"unsound": 0, "incomplete": 765},
+      "result": "PASS (sound on every case)"
+    },
+    "acceptance": {"test": "SLICE-001's own driver and 2,511 cases against the GENERATED firstKindTerm", "fail_c": 0, "fail_m2": 0, "result": "PASS"},
+    "objects_sha256": {
+      "lm2_gen.o": "93d8dd1a2299d68d06e3a1840aa6b5b98e8797cf2c95e2d5ca0b214d1fa37b39",
+      "LM2Gen.o": "16915809cfc5bfa96fbb09a11805ee42d67b0dd0c9b10f94fad852f08532f126",
+      "LM2Nat.o": "6b5f49c1b853065e8c902c8ec9dad60e9e7fb3d8c86761c3fe59f75caa37c813",
+      "lm2_gen_cases.o": "4d470c5a61dd26aa9808a4eb7f23756a0a956596b7d1e797e4d51feb17249ab1"
+    }
+  },
+  "statuses_per_translated_function": ["LEAN_VERIFIED (G2 ledger)", "SEMANTICALLY_MAPPED (MathIR v1 + fidelity check)", "DIFFERENTIALLY_TESTED"],
+  "not_claimed": ["FORMALLY_EQUIVALENT"],
+  "limits": [
+    "Incomplete = machine OVERFLOW where Lean's value fits in 64 bits, because an intermediate overflowed (e.g. n*(n+1) before /2 for huge n). Sound but not complete; CompCert has no 128-bit integer type to widen intermediates.",
+    "1,971 inputs skipped: their IR evaluation exceeded the 2^4096 / 200,000-step budget; they are not tested.",
+    "Testing covers finite input sets; no formal proof that generated code equals the Lean definitions."
+  ]
+}

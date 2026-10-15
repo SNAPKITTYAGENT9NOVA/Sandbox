@@ -687,9 +687,9 @@ def naiveCost (K : Nat) (ds : List Nat) (n cap : Nat) : Nat := Id.run do
   for m in [0:n + 1] do
     if m < K then c := c.push 1
     else
-      let v := ds.foldl (fun acc j => acc + c[m - K + j]!) 1
+      let v := ds.foldl (fun acc j => acc + c.getD (m - K + j) 0) 1
       c := c.push (min v (cap + 1))
-  return c[n]!
+  return c.getD n 0
 
 /-! ## Budgeted IR interpreter (exact ℕ, aborts instead of exploding) -/
 

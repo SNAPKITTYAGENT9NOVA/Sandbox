@@ -674,13 +674,31 @@ def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
   s!"(* Lean: {n} *)\nPROCEDURE {sym n} ({mParams d.arity}) : INTEGER;\n{varDecl}BEGIN\n" ++
     "\n".intercalate st.lines.toList ++ s!"\nEND {sym n};\n"
 
+/-- Lookback offsets `j` used by a step (as `prev j`), de-duplicated: Lean's compiler shares
+identical calls within an expression, so each distinct `f (m + j)` is one call. -/
+partial def E.prevs (e : E) : List Nat :=
+  ((match e with | .prev j => [j] | _ => []) ++ e.children.flatMap E.prevs).eraseDups
+
+/-- Size of the call tree of Lean's *compiled* evaluation of a lookback recursion at `n`
+(naive tree recursion: cost(n) = 1 for n < K, else 1 + Σ_{j ∈ ds} cost(n - K + j)), saturating
+just above `cap`. The generated code is linear; this only bounds the reference evaluation. -/
+def naiveCost (K : Nat) (ds : List Nat) (n cap : Nat) : Nat := Id.run do
+  let mut c : Array Nat := #[]
+  for m in [0:n + 1] do
+    if m < K then c := c.push 1
+    else
+      let v := ds.foldl (fun acc j => acc + c[m - K + j]!) 1
+      c := c.push (min v (cap + 1))
+  return c[n]!
+
 /-! ## Budgeted IR interpreter (exact ℕ, aborts instead of exploding) -/
 
 /-- Any intermediate above `2^maxBits`, more than `maxSteps` loop iterations / calls in total,
 `choose` with n > 24 (Mathlib's `Nat.choose` is naive binary recursion at run time), or
 primality / `minFac` above 2^20 aborts the evaluation (`none`). -/
 structure Budget where
-  maxBits : Nat := 4096
+  maxBits    : Nat := 4096
+  naiveCalls : Nat := 2000000   -- call-tree size of Lean's naive evaluation of lookback recursion
   steps   : Nat := 20000   -- the interpreter runs inside `#eval` (interpreted), so keep this modest
 
 abbrev IRM := StateT Nat (Except String)   -- state: steps used
@@ -800,9 +818,12 @@ partial def evalDef (b : Budget) (defs : Std.HashMap Name FnDef) (d : FnDef) (vs
   | .direct _ e => evalE b defs vs 0 #[] {} e
   | .recur _ j bases step =>
     let K := bases.length
+    let n := vs.getD j 0
+    -- the reference is Lean's compiled definition, which evaluates this recursion naively
+    -- (exponential for K ≥ 2): refuse inputs whose naive call tree exceeds the budget
+    if K ≥ 2 && naiveCost K step.prevs n b.naiveCalls > b.naiveCalls then throw "naive-recursion budget"
     let mut w : Array Nat := #[]
     for e in bases do w := w.push (← evalE b defs vs 0 #[] {} e)
-    let n := vs.getD j 0
     if n < K then return w[n]!
     for m in [0:n - K + 1] do
       tick b

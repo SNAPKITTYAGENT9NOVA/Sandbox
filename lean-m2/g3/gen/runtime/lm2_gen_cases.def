@@ -1,0 +1,7 @@
+DEFINITION MODULE FOR "C" lm2_gen_cases;
+(* Binding to the Lean-generated reference vectors (lm2_gen_cases.c, emitted by mathir_body.lean). *)
+FROM SYSTEM IMPORT ADDRESS;
+EXPORT UNQUALIFIED lm2_gen_case_count, lm2_gen_case_get;
+PROCEDURE lm2_gen_case_count () : CARDINAL;
+PROCEDURE lm2_gen_case_get (i: CARDINAL; f, a0, a1, a2, st, v: ADDRESS) : INTEGER;
+END lm2_gen_cases.

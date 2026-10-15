@@ -1,0 +1,11 @@
+DEFINITION MODULE LM2Nat;
+(* LEAN-M2-CC-001 MathIR v1 runtime: checked LONGCARD operations with Lean ℕ semantics.
+   Each returns TRUE on overflow (r NOT written), FALSE otherwise.
+   Sub truncates at 0; x DIV 0 = 0; x MOD 0 = x; 0^0 = 1. Hand-written, fixed. *)
+PROCEDURE Add (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE Mul (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE Sub (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE Div (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE Mod (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE Pow (a, e: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+END LM2Nat.

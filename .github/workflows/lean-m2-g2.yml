@@ -47,10 +47,17 @@ jobs:
           mkdir -p "$EVID"
           git -C "$CORPUS" rev-parse HEAD > "$EVID/corpus-commit.txt"
 
+      - name: Install elan (toolchain chosen by the corpus lean-toolchain)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
       - name: Verify corpus against the frozen inventory (fail closed)
         run: |
           set -euo pipefail
-          python3 -I lean-m2/tools/g1_inventory.py "$CORPUS" "$EVID/g1-recheck"
+          # G1, Lean-native: Lean's header parser, Lake's TOML loader (tools/G1Inventory.lean)
+          (cd "$CORPUS" && lean --run "$GITHUB_WORKSPACE/lean-m2/tools/G1Inventory.lean" . "$EVID/g1-recheck")
           # The inventory is not stored in git; it must regenerate byte-for-byte.
           (cd "$EVID/g1-recheck" && grep -v '^#' "$GITHUB_WORKSPACE/lean-m2/corpus/formal-conjectures/84cf7f8/EVIDENCE.sha256" | sha256sum -c -)
           GOT=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["source_tree_sha256"])' "$EVID/g1-recheck/source-hashes.json")
@@ -62,12 +69,6 @@ jobs:
             got=$(sha256sum "$CORPUS/$f" | cut -d' ' -f1)
             echo "$f got=$got want=$want"; test "$got" = "$want"
           done
-
-      - name: Install elan (toolchain chosen by the corpus lean-toolchain)
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
-            | sh -s -- -y --default-toolchain none
-          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
       - name: Record toolchain
         working-directory: corpus

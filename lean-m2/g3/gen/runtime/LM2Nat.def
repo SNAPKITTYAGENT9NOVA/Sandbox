@@ -8,4 +8,15 @@ PROCEDURE Sub (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
 PROCEDURE Div (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
 PROCEDURE Mod (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
 PROCEDURE Pow (a, e: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+(* MathIR v2 builtins, Lean/Mathlib semantics (same algorithms as lm2_nat.h) *)
+PROCEDURE Min (a, b: LONGCARD) : LONGCARD;
+PROCEDURE Max (a, b: LONGCARD) : LONGCARD;
+PROCEDURE Gcd (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;      (* gcd 0 0 = 0 *)
+PROCEDURE Lcm (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;      (* lcm 0 b = 0 *)
+PROCEDURE Fact (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;        (* 21! overflows *)
+PROCEDURE Choose (n, k: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* 0 if k > n *)
+PROCEDURE Sqrt (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;        (* floor *)
+PROCEDURE MinFac (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;      (* minFac 0 = 2, minFac 1 = 1 *)
+PROCEDURE IsPrime (n: LONGCARD) : LONGCARD;                     (* 1 / 0 *)
+PROCEDURE Dvd (a, b: LONGCARD) : LONGCARD;                      (* 0 ∣ b iff b = 0; 1 / 0 *)
 END LM2Nat.

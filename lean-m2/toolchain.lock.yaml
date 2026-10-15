@@ -18,7 +18,7 @@ source:
 
 lean:
   executable: lean
-  version: REQUIRED
+  version: "4.33.1 (819816b2e0a3bf405af45ae5c7af2491d8f5bee6)"   # observed in G2 and SLICE-001 runs
   lake_executable: lake
   lake_version: REQUIRED
   dependency_lock: lake-manifest.json
@@ -56,15 +56,15 @@ compcert:
 
 modula2:
   compiler: gm2
-  version: REQUIRED
+  version: "13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1)"   # observed, SLICE-001 run 38686128245
   executable_path: REQUIRED
   executable_sha256: REQUIRED
-  gcc_version: REQUIRED
-  target_triple: REQUIRED
+  gcc_version: "13.3.0"                     # observed
+  target_triple: aarch64-linux-gnu          # observed (gm2 -dumpmachine)
   object_format: ELF
   target_architecture: AArch64
   target_os: Linux
-  language_dialect: REQUIRED
+  language_dialect: ISO                     # selected and used (gm2 -fiso)
   runtime_library: REQUIRED
   runtime_version: REQUIRED
   standard_library_fingerprint: REQUIRED

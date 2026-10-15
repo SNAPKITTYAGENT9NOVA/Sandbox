@@ -2,7 +2,13 @@
 
 This is the first vertical slice of LEAN-M2-CC-001 (contract §14): one computational definition
 taken through Lean → C subset → CompCert → Modula-2 → differential test. This document is the
-**semantic contract** (status `SEMANTICALLY_MAPPED` once reviewed). No code for this slice exists yet.
+**semantic contract**.
+
+> **Status: built and passing** (CI run 38686128245): `LEAN_VERIFIED + SEMANTICALLY_MAPPED + DIFFERENTIALLY_TESTED`.
+> - All claims below are discharged in Lean.
+> - 2,511 cases, 0 failures for both the CompCert C and the native Modula-2, on native AArch64.
+>
+> Evidence: `slice001/LEDGER.json`. Code: `slice001/`.
 
 ## Source
 
@@ -26,7 +32,7 @@ def firstKindTerm (p : ℕ) : ℕ → ℕ
 - **Type:** `ℕ → ℕ → ℕ`. Its only type constant is `Nat`, so it lies in the exact domain.
 - **Reference values from the corpus:** the test theorem `two_starts_firstKind_length_five` (category `test`, proved by `norm_num`) evaluates `firstKindTerm 2 i` for i = 0..5. That gives the reference values 2, 5, 11, 23, 47, 95.
 
-## Claims to discharge in this slice (not yet established)
+## Claims discharged in this slice (`slice001/Spec.lean`)
 
 1. **Closed form** `firstKindTerm p n = 2^n * (p + 1) - 1`.
    - By hand: t₀ + 1 = p + 1, and tₙ₊₁ + 1 = 2(tₙ + 1).
@@ -63,7 +69,7 @@ The implementation iterates `t := 2t + 1`, checking `t > (UINT64_MAX - 1) / 2` b
 `n ≥ 65` short-circuits to `OVERFLOW`, by claim 2. The boundary cases (n = 64, p = 0) and (n = 64, p = 1) are mandatory tests.
 
 **Modula-2 (gm2, ISO dialect):** two separately tested artifacts, which are never conflated.
-- `CunninghamChain.def/.mod`: a **native** Modula-2 implementation generated from the same recurrence, with `LONGCARD` and an explicit `Status` result.
+- `CunninghamChain.def/.mod`: a **native** Modula-2 implementation of the same recurrence (hand-written for this slice; to be produced by the MathIR generator later), with `LONGCARD` and an explicit `Status` result.
 - `cunningham_c.def` (`DEFINITION MODULE FOR "C"`, with `EXPORT UNQUALIFIED`): a **binding** to the CompCert object.
 
 ## Differential tests (G6 for this slice)

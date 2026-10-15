@@ -118,7 +118,7 @@ jobs:
           echo "mathir exit=$rc seconds=$(( $(date +%s) - start ))" | tee -a "$EVID/mathir.log"
           tail -30 "$EVID/mathir.log"
           test $rc -eq 0
-          grep -q '^MATHIR candidates=' "$EVID/mathir.log"
+          grep -q 'translated=' "$EVID/mathir.log"
           (cd "$EVID/gen" && sha256sum *) | tee "$EVID/gen.sha256"
 
       - name: SLICE-001 vectors (acceptance input)
@@ -132,9 +132,9 @@ jobs:
         run: |
           A=lean-m2/scripts/annotate.sh
           [ -f "$EVID/gen/report.txt" ] && $A notice "MathIR report" "$EVID/gen/report.txt" 120
-          if ! grep -q '^MATHIR candidates=' "$EVID/mathir.log" 2>/dev/null; then
-            grep -n -E 'error' "$EVID/mathir.log" | head -40 > "$RUNNER_TEMP/e.txt" || true
-            $A error "MathIR errors (first 40)" "$RUNNER_TEMP/e.txt" 40
+          if ! grep -q 'translated=' "$EVID/mathir.log" 2>/dev/null; then
+            { grep -n -E 'error' "$EVID/mathir.log" | head -25; echo '--- log tail ---'; tail -15 "$EVID/mathir.log"; } > "$RUNNER_TEMP/e.txt" 2>/dev/null || true
+            $A error "MathIR errors and log tail" "$RUNNER_TEMP/e.txt" 45
           fi
 
       - uses: actions/upload-artifact@v4

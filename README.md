@@ -1,23 +1,46 @@
-# Sandbox → LEAN-M2-CC-001 workstation
+# LEAN-M2-CC-001: Lean 4 → Modula-2 mathematical library
 
-This repository now hosts the workstation toolchain for **LEAN-M2-CC-001**: reconstructing a
-Lean 4 mathematical library as Modula-2, with CompCert-gated C extraction, on AArch64 Linux.
+This repository builds the pipeline that reconstructs a Lean 4 mathematical library as native
+Modula-2. Computational definitions are extracted to C and compiled with CompCert. Lean proof
+provenance is kept. The target is AArch64 Linux.
 
 **Start here:** [`lean-m2/README.md`](lean-m2/README.md)
 
 ## Status
 
-| Gate | What | State |
-|---|---|---|
-| G0 | Toolchain probe (CompCert 3.18, gm2, Lean, ABI link probe) | implemented; first native AArch64 run in CI |
-| G1–G6 | Inventory, Lean validation, extraction, CompCert build, Modula-2, release | not implemented |
+| Gate | What | State | Evidence |
+|---|---|---|---|
+| G0 | Toolchain probe: CompCert 3.18, gm2, Lean, linked ABI probe | **PASS** (toolchain-only), native AArch64 | CI `lean-m2 workstation (G0)` |
+| G1 | Corpus inventory: hashes, Lean headers, import graph, Lake targets | **PASS** (Python tool). The Lean-native tool is in validation | `lean-m2/corpus.lock.yaml`, `EVIDENCE.sha256` |
+| G2 | `lake build` + Lean-native declaration and axiom ledger | **PASS**: 17,232 constants; 12,390 `LEAN_VERIFIED`, 4,842 `BLOCKED` | `lean-m2/corpus/formal-conjectures/84cf7f8/g2-headline.json` |
+| G3 | Extraction of eligible definitions to a C subset | started: candidate shortlist only | CI `lean-m2 G2` annotations |
+| G4–G6 | CompCert build, Modula-2 generation, differential testing and release | not started | |
 
-Nothing in this repository is a verified library yet. See the verification ledger rules in the contract.
+**Corpus:** [google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures)
+@ `84cf7f8` (1,777 `.lean` files, Lean 4.33.1, Mathlib v4.33.1).
+
+**No Modula-2 library exists yet.** The code so far is the pipeline: probes, inventory, ledger and CI.
+`LEAN_VERIFIED` means Lean's kernel accepted the declaration using only `propext`,
+`Classical.choice` and `Quot.sound`. It says nothing about any translation.
+
+## Layout
+
+```
+lean-m2/
+  toolchain.lock.yaml     frozen contract lockfile (REQUIRED = still unmeasured)
+  corpus.lock.yaml        corpus commit, hashes, dependency pins, G1/G2 results
+  workstation.lock.yaml   container image pins (CompCert source commit, Coq, OCaml)
+  corpus/…/84cf7f8/       EVIDENCE.sha256 (pins regenerated inventory), g2-headline.json
+  docker/                 AArch64 toolchain image
+  scripts/                G0 probe, CI annotation helper
+  tools/                  G1 inventory (Lean, plus Python until retired), G2 ledger (Lean), summarizer
+  fixtures/abi/           CompCert-C <-> gm2 ABI probe
+  workstation/            Windows (PowerShell) and Linux/macOS launchers
+.github/workflows/        lean-m2-workstation (G0, ARM), lean-m2-g1, lean-m2-g2
+```
 
 ## History
 
-This is a fork of [jamiedevera/Sandbox](https://github.com/jamiedevera/Sandbox), a Next.js
-deployment-risk analysis web app whose original README stated MIT licensing. The web app
-(React UI, API route, WatsonX glue, its tests and CI) and its leftovers (`bob_sessions/`,
-`TestCases/`, `BOB_DEVELOPMENT.md`) were removed from this fork. They remain in git history
-and upstream.
+This is a fork of [jamiedevera/Sandbox](https://github.com/jamiedevera/Sandbox), a Next.js web app
+whose original README stated MIT licensing. The app and its leftovers were removed. They remain in
+git history and upstream.

@@ -22,7 +22,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check:
+    # fast: elaborate the exporter against Lean core only (no Mathlib, no corpus) to catch compile errors early
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the corpus Lean toolchain
+        run: |
+          V=$(awk -F'"' '/^  lean_toolchain:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "$V"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Compile-check mathir_body.lean (empty module list)
+        run: |
+          { echo "import Lean"; cat lean-m2/tools/mathir_body.lean; } > "$RUNNER_TEMP/Check.lean"
+          : > "$RUNNER_TEMP/empty.tsv"
+          set +e
+          MATHIR_OUT="$RUNNER_TEMP/out" MATHIR_MODS="$RUNNER_TEMP/empty.tsv" lean "$RUNNER_TEMP/Check.lean" > "$RUNNER_TEMP/check.log" 2>&1
+          rc=$?; set -e
+          grep -n 'error' "$RUNNER_TEMP/check.log" | head -40 > "$RUNNER_TEMP/err.txt" || true
+          if [ $rc -ne 0 ]; then
+            lean-m2/scripts/annotate.sh error "MathIR compile-check errors (first 40)" "$RUNNER_TEMP/err.txt" 40
+            cat "$RUNNER_TEMP/check.log"; exit 1
+          fi
+          tail -3 "$RUNNER_TEMP/check.log"
+
   lean:
+    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 300
     env:

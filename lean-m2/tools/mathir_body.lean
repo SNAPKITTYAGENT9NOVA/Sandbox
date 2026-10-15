@@ -40,14 +40,14 @@ inductive E where
   | call (fn : Name) (args : List E)
   deriving Inhabited, BEq
 
-partial def E.toJson : E → Json
-  | .lit n => Json.mkObj [("lit", toJson (toString n))]
-  | .arg i => Json.mkObj [("arg", toJson i)]
-  | .idx => Json.mkObj [("idx", toJson true)]
-  | .acc => Json.mkObj [("acc", toJson true)]
-  | .bin op a b => Json.mkObj [("op", toJson op), ("a", a.toJson), ("b", b.toJson)]
-  | .ite c a b t e => Json.mkObj [("if", toJson c), ("a", a.toJson), ("b", b.toJson), ("then", t.toJson), ("else", e.toJson)]
-  | .call f as => Json.mkObj [("call", toJson f.toString), ("args", toJson (as.map E.toJson))]
+partial def E.json : E → Json
+  | .lit n => Json.mkObj [("lit", Lean.toJson (toString n))]
+  | .arg i => Json.mkObj [("arg", Lean.toJson i)]
+  | .idx => Json.mkObj [("idx", Lean.toJson true)]
+  | .acc => Json.mkObj [("acc", Lean.toJson true)]
+  | .bin op a b => Json.mkObj [("op", Lean.toJson op), ("a", a.json), ("b", b.json)]
+  | .ite c a b t e => Json.mkObj [("if", Lean.toJson c), ("a", a.json), ("b", b.json), ("then", t.json), ("else", e.json)]
+  | .call f as => Json.mkObj [("call", Lean.toJson f.toString), ("args", Lean.toJson (as.map E.json))]
 
 partial def E.calls : E → List Name
   | .bin _ a b => a.calls ++ b.calls
@@ -55,12 +55,12 @@ partial def E.calls : E → List Name
   | .call f as => f :: as.flatMap E.calls
   | _ => []
 
-inductive Def where
+inductive FnDef where
   | nonrec (arity : Nat) (body : E)
   | primrec (arity : Nat) (recArg : Nat) (base : E) (step : E)
   deriving Inhabited
 
-def Def.arity : Def → Nat
+def FnDef.arity : FnDef → Nat
   | .nonrec a _ => a
   | .primrec a _ _ _ => a
 
@@ -70,11 +70,11 @@ partial def E.hasPow : E → Bool
   | .call _ as => as.any E.hasPow
   | _ => false
 
-def Def.hasPow : Def → Bool
+def FnDef.hasPow : FnDef → Bool
   | .nonrec _ e => e.hasPow
   | .primrec _ _ b s => b.hasPow || s.hasPow
 
-def Def.calls : Def → List Name
+def FnDef.calls : FnDef → List Name
   | .nonrec _ b => b.calls
   | .primrec _ _ b s => b.calls ++ s.calls
 
@@ -187,7 +187,7 @@ def natArity? (ty : Expr) : MetaM (Option Nat) :=
     return some xs.size
 
 /-- Read the definition from its equation lemmas (or, if it has none, its body). -/
-def extract (n : Name) (arity : Nat) : MetaM (Except String Def) := do
+def extract (n : Name) (arity : Nat) : MetaM (Except String FnDef) := do
   let eqns? ← try getEqnsFor? n catch _ => pure none
   match eqns? with
   | none | some #[] =>
@@ -307,7 +307,7 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
 def cParams (arity : Nat) : String :=
   ", ".intercalate ((List.range arity).map (s!"uint64_t a{·}") ++ ["uint64_t *out"])
 
-def cFunction (sym : Name → String) (n : Name) (d : Def) : String :=
+def cFunction (sym : Name → String) (n : Name) (d : FnDef) : String :=
   let body : CGM Unit := do
     emitC "  if (out == 0) return LM2_ERR_NULL;"
     match d with
@@ -377,7 +377,7 @@ def mParams (arity : Nat) : String :=
   let as := ", ".intercalate ((List.range arity).map (s!"a{·}"))
   s!"{as}: LONGCARD; VAR out: LONGCARD"
 
-def mProcedure (sym : Name → String) (n : Name) (d : Def) : String :=
+def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
   let body : MGM Unit := do
     match d with
     | .nonrec _ e =>
@@ -461,7 +461,7 @@ set_option maxHeartbeats 0 in
       if let some k ← natArity? ci.type then cands := cands.push (ci.name, k)
   cands := cands.qsort (fun a b => a.1.toString < b.1.toString)
   -- 2. extract
-  let mut defs : Std.HashMap Name Def := {}
+  let mut defs : Std.HashMap Name FnDef := {}
   let mut blocked : Array (Name × String) := #[]
   for (n, k) in cands do
     match ← (try extract n k catch e => do pure (.error s!"exception: {← e.toMessageData.toString}")) with
@@ -564,8 +564,8 @@ set_option maxHeartbeats 0 in
       Json.mkObj ([("id", toJson i), ("name", toJson n.toString), ("c_symbol", toJson (cSym n)),
         ("m2_symbol", toJson (mSym n)), ("arity", toJson d.arity)] ++
         match d with
-        | .nonrec _ e => [("kind", toJson "nonrec"), ("body", e.toJson)]
-        | .primrec _ j b s => [("kind", toJson "primrec"), ("rec_arg", toJson j), ("base", b.toJson), ("step", s.toJson)])))]
+        | .nonrec _ e => [("kind", toJson "nonrec"), ("body", e.json)]
+        | .primrec _ j b s => [("kind", toJson "primrec"), ("rec_arg", toJson j), ("base", b.json), ("step", s.json)])))]
   IO.FS.writeFile (out "mathir.json") (irJson.pretty ++ "\n")
   let blockedSorted := blocked.qsort (fun a b => a.1.toString < b.1.toString)
   IO.FS.writeFile (out "blocked.json") ((toJson (blockedSorted.map fun (n, r) =>

@@ -8,9 +8,9 @@ machine-readable evidence and blocks on anything unmeasured.
 | Gate | State | Where the evidence lives |
 |---|---|---|
 | **G0** toolchain probe | **PASS** (`TOOLCHAIN_ONLY_PASS`), native AArch64 CI | `lean-m2 workstation (G0)` run annotations |
-| **G1** corpus inventory | **PASS** (pre-elaboration). The Lean-native tool is in validation (see below) | `corpus.lock.yaml`, `corpus/…/EVIDENCE.sha256` |
+| **G1** corpus inventory | **PASS** (pre-elaboration), Lean-native tool | `corpus.lock.yaml`, `corpus/…/EVIDENCE.sha256`, `lean-m2 G1` runs |
 | **G2** Lean validation and axiom ledger | **PASS** | `corpus/formal-conjectures/84cf7f8/g2-headline.json`, `corpus.lock.yaml` |
-| **G3** extraction to C | started: exact-domain candidate shortlist | `lean-m2 G2` run annotations |
+| **G3** extraction to C | started: shortlist of 371 exact-domain definitions; first slice specified in `g3/SLICE-001-firstKindTerm.md` | `lean-m2 G2` run annotations |
 | **G4** CompCert build, **G5** Modula-2, **G6** differential testing and release | not started | |
 
 ## Frozen corpus
@@ -53,8 +53,7 @@ machine-readable evidence and blocks on anything unmeasured.
 | Tool | Gate | Notes |
 |---|---|---|
 | `scripts/probe-toolchain.sh` | G0 | fail-closed toolchain checks and linked ABI probe |
-| `tools/G1Inventory.lean` | G1 | **in validation.** Uses Lean's own `Parser.parseHeader` and `HeaderSyntax.imports`, Lake's own `Lake.Toml.loadToml`, and a FIPS 180-4 SHA-256 (passes the NIST vectors) |
-| `tools/g1_inventory.py` | G1 | current implementation. To be deleted once `compare_g1.py` reports the Lean tool IDENTICAL |
+| `tools/G1Inventory.lean` | G1 | Uses Lean's own `Parser.parseHeader` and `HeaderSyntax.imports`, Lake's own `Lake.Toml.loadToml`, and a FIPS 180-4 SHA-256 (passes the 5 NIST vectors; every file hash matches `sha256sum`). It replaced the Python G1 after a semantic differential over all 1,777 files reported IDENTICAL (run 38678453308) |
 | `tools/g2_ledger_body.lean` | G2 | per-constant kind, safety, escape hatches, direct `sorry`, transitive axioms, and type facts for G3 |
 | `tools/g2_summarize.py` | G2/G3 | maps the evidence to contract statuses, and filters the G3 exact-domain candidates |
 | `scripts/annotate.sh` | CI | publishes evidence as check-run annotations, readable via the REST API |
@@ -99,7 +98,7 @@ Linux/macOS: `workstation/lean-m2.sh` has the same commands. VS Code: `.devconta
 | Workflow | Runner | Does |
 |---|---|---|
 | `lean-m2-workstation.yml` | `ubuntu-24.04-arm` | builds the image, runs G0, and publishes `ghcr.io/snapkittyagent9nova/lean-m2-workstation` from `main` |
-| `lean-m2-g1.yml` | `ubuntu-latest` | Lean G1: SHA-256 self-test, every hash vs `sha256sum`, and a differential vs Python G1 |
+| `lean-m2-g1.yml` | `ubuntu-latest` | Lean G1: SHA-256 self-test, every hash vs `sha256sum`, and output vs `EVIDENCE.sha256` |
 | `lean-m2-g2.yml` | `ubuntu-latest` | re-verifies the corpus, then runs `lake build`, the ledger and the summary. Corpus build cache is saved |
 
 All three publish their key evidence as check-run annotations, and upload full evidence as artifacts.
@@ -112,8 +111,14 @@ All three publish their key evidence as check-run annotations, and upload full e
 
 ## Open items
 
-- Retire the Python G1 once the Lean G1 differential is IDENTICAL.
-- Identify the single `lcProof` dependent, and explain the 14 modules with no constants.
 - Ledger the `postpone` build variant.
 - Record the base-image and published-image digests.
-- G3: choose the first exact-domain definition, then build the vertical slice Lean → C → CompCert → Modula-2 → differential test.
+- SLICE-001 (`CunninghamChain.firstKindTerm`, see `g3/`):
+  - Lean lemmas for the closed form and the iteration bound;
+  - the C subset compiled with CompCert;
+  - the native Modula-2 module and the C binding;
+  - differential tests.
+
+Resolved:
+- **The `lcProof` dependent** is a compiler-generated `unsafe` auxiliary (`Nat.primeFactorsEq.unsafe_1`).
+- **The 14 modules with no constants** are 2 aggregator roots, 11 stub files and 1 attribute-only file.

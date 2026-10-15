@@ -758,7 +758,11 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     | "div" => pure (a / c)
     | "mod" => pure (a % c)
     | _ =>
-      if a ≤ 1 || c == 0 then pure (a ^ c)
+      -- Lean's runtime `Nat.pow` (lean_nat_pow, v4.33.1 src/runtime/object.cpp) calls
+      -- lean_internal_panic — process exit 1 — for any exponent > UINT_MAX, whatever the base.
+      -- The compiled corpus definition cannot be evaluated there, so neither may we: skip.
+      if c > 4294967295 then throw "runtime limit: Nat.pow exponent > 2^32-1"
+      else if a ≤ 1 || c == 0 then pure (a ^ c)
       else if c * (a.log2 + 1) > b.maxBits + 64 then throw "size budget"
       else chk b (a ^ c)
   | .prim op xs => do
@@ -991,6 +995,9 @@ set_option maxHeartbeats 0 in
         skipped := skipped + 1
         continue
       let irv := irv?.getD 0
+      -- logged before the call: a runtime panic in compiled corpus code kills the process
+      -- without flushing `#eval` output, so this line is the only record of the failing input
+      progress s!"  lean {n} {xs}"
       match unsafe evalN env n d.arity xs with
       | .error e => evalFail := evalFail.push (n, e); break
       | .ok v =>

@@ -10,7 +10,7 @@ machine-readable evidence and blocks on anything unmeasured.
 | **G0** toolchain probe | **PASS** (`TOOLCHAIN_ONLY_PASS`), native AArch64 CI | `lean-m2 workstation (G0)` run annotations |
 | **G1** corpus inventory | **PASS** (pre-elaboration), Lean-native tool | `corpus.lock.yaml`, `corpus/…/EVIDENCE.sha256`, `lean-m2 G1` runs |
 | **G2** Lean validation and axiom ledger | **PASS** | `corpus/formal-conjectures/84cf7f8/g2-headline.json`, `corpus.lock.yaml` |
-| **G3** extraction to C | started: shortlist of 371 exact-domain definitions; first slice specified in `g3/SLICE-001-firstKindTerm.md` | `lean-m2 G2` run annotations |
+| **G3** extraction to C | started: shortlist of 339 exact-domain definitions; first slice specified in `g3/SLICE-001-firstKindTerm.md` | `lean-m2 G2` run annotations |
 | **G4** CompCert build, **G5** Modula-2, **G6** differential testing and release | not started | |
 
 ## Frozen corpus

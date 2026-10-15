@@ -63,5 +63,5 @@ corpus:
     resolved:
       lcProof_dependent: "_private.FormalConjecturesForMathlib.Data.Nat.Full.0.Nat.primeFactorsEq.unsafe_1 (compiler-generated unsafe auxiliary; correctly BLOCKED; no theorem depends on it)"
       modules_without_constants: "14 = 2 aggregator roots (FormalConjecturesForMathlib, FormalConjecturesUtil) + 11 stub files ending at `public section` + Analysis.Real.Cardinality (only `attribute [simp]`)"
-    g3_exact_domain_candidates: 371   # G2 run 38677197622; filter since tightened to drop Type-valued defs and match_N auxiliaries
-    open_items: ["ledger the postpone build variant", "re-run G2 to count the tightened G3 shortlist"]
+    g3_exact_domain_candidates: 339   # G2 run 38684283753 (tightened filter: no Type-valued defs, no match_N auxiliaries); was 371
+    open_items: ["ledger the postpone build variant"]

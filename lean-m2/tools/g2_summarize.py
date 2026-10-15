@@ -20,7 +20,10 @@ Maps raw Lean evidence to contract statuses. The policy is explicit and conserva
 
 Outputs: g2-result.json (summary), verification-ledger.jsonl (one status row per constant).
 """
-import argparse, collections, json, os, sys
+import argparse, collections, json, os, re, sys
+
+# Compiler-generated auxiliaries that are not user definitions (e.g. `foo.match_1`).
+AUX_LAST_COMPONENT = re.compile(r"(match|proof|eq|fun|lambda|spec|sunfold|unfold)_\d+$")
 
 STANDARD_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
 
@@ -92,6 +95,8 @@ def main():
                     and not r["extern"] and r["implemented_by"] is None)
             if cand:
                 exact = (not r.get("returns_prop", True)
+                         and not r.get("returns_sort", True)          # Type-valued: a type former
+                         and not AUX_LAST_COMPONENT.search(r["name"])  # match_N etc.
                          and set(r.get("type_consts", ["?"])) <= EXACT_DOMAIN_CONSTS)
                 candidates.append({"name": r["name"], "module": r["module"], "directory_class": cls,
                                    "type": r.get("type_pp"), "type_consts": r.get("type_consts"),

@@ -10,7 +10,7 @@ machine-readable evidence and blocks on anything unmeasured.
 | **G0** toolchain probe | **PASS** (`TOOLCHAIN_ONLY_PASS`), native AArch64 CI | `lean-m2 workstation (G0)` run annotations |
 | **G1** corpus inventory | **PASS** (pre-elaboration), Lean-native tool | `corpus.lock.yaml`, `corpus/…/EVIDENCE.sha256`, `lean-m2 G1` runs |
 | **G2** Lean validation and axiom ledger | **PASS** | `corpus/formal-conjectures/84cf7f8/g2-headline.json`, `corpus.lock.yaml` |
-| **G3** extraction to C | started: exact-domain candidate shortlist | `lean-m2 G2` run annotations |
+| **G3** extraction to C | started: shortlist of 371 exact-domain definitions; first slice specified in `g3/SLICE-001-firstKindTerm.md` | `lean-m2 G2` run annotations |
 | **G4** CompCert build, **G5** Modula-2, **G6** differential testing and release | not started | |
 
 ## Frozen corpus
@@ -111,7 +111,14 @@ All three publish their key evidence as check-run annotations, and upload full e
 
 ## Open items
 
-- Identify the single `lcProof` dependent, and explain the 14 modules with no constants.
 - Ledger the `postpone` build variant.
 - Record the base-image and published-image digests.
-- G3: choose the first exact-domain definition, then build the vertical slice Lean → C → CompCert → Modula-2 → differential test.
+- SLICE-001 (`CunninghamChain.firstKindTerm`, see `g3/`):
+  - Lean lemmas for the closed form and the iteration bound;
+  - the C subset compiled with CompCert;
+  - the native Modula-2 module and the C binding;
+  - differential tests.
+
+Resolved:
+- **The `lcProof` dependent** is a compiler-generated `unsafe` auxiliary (`Nat.primeFactorsEq.unsafe_1`).
+- **The 14 modules with no constants** are 2 aggregator roots, 11 stub files and 1 attribute-only file.

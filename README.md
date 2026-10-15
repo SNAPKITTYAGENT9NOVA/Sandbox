@@ -13,7 +13,7 @@ provenance is kept. The target is AArch64 Linux.
 | G0 | Toolchain probe: CompCert 3.18, gm2, Lean, linked ABI probe | **PASS** (toolchain-only), native AArch64 | CI `lean-m2 workstation (G0)` |
 | G1 | Corpus inventory: hashes, Lean headers, import graph, Lake targets | **PASS**, Lean-native tool | `lean-m2/corpus.lock.yaml`, `EVIDENCE.sha256` |
 | G2 | `lake build` + Lean-native declaration and axiom ledger | **PASS**: 17,232 constants; 12,390 `LEAN_VERIFIED`, 4,842 `BLOCKED` | `lean-m2/corpus/formal-conjectures/84cf7f8/g2-headline.json` |
-| G3 | Extraction of eligible definitions to a C subset | started: candidate shortlist only | CI `lean-m2 G2` annotations |
+| G3 | Extraction of eligible definitions to a C subset | started: 371-definition shortlist; SLICE-001 specified | `lean-m2/g3/SLICE-001-firstKindTerm.md` |
 | G4–G6 | CompCert build, Modula-2 generation, differential testing and release | not started | |
 
 **Corpus:** [google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures)

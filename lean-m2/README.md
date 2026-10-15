@@ -10,10 +10,10 @@ machine-readable evidence and blocks on anything unmeasured.
 | **G0** toolchain probe | **PASS** (`TOOLCHAIN_ONLY_PASS`), native AArch64 CI | `lean-m2 workstation (G0)` run annotations |
 | **G1** corpus inventory | **PASS** (pre-elaboration), Lean-native tool | `corpus.lock.yaml`, `corpus/…/EVIDENCE.sha256`, `lean-m2 G1` runs |
 | **G2** Lean validation and axiom ledger | **PASS** | `corpus/formal-conjectures/84cf7f8/g2-headline.json`, `corpus.lock.yaml` |
-| **G3** extraction to C | **MathIR v1 generator**: 20 of 246 `ℕᵏ→ℕ` definitions translated from Lean's equation lemmas (226 blocked with reasons); 0 IR-vs-Lean fidelity mismatches | `g3/gen/LEDGER.json` |
+| **G3** extraction to C | **MathIR v2 generator**: 88 of 246 `ℕᵏ→ℕ` definitions translated from Lean's equation lemmas (113 extracted, 25 dropped because they call an untranslated function; 158 blocked with reasons); 0 IR-vs-Lean fidelity mismatches | `g3/gen/LEDGER.json` |
 | **G4** CompCert build | **PASS**: SLICE-001 and all generated code (ccomp 3.18, AArch64 ELF) | `g3/slice001/LEDGER.json`, `g3/gen/LEDGER.json` |
 | **G5** Modula-2 | **PASS**: generated native Modula-2 (`LM2Gen`) + C binding, gm2 13.3.0 ISO | `g3/gen/LEDGER.json` |
-| **G6** differential testing and release | **0 unsound** in 5,197 generated-code cases (765 reported incomplete); SLICE-001 acceptance passes on generated code; release gate not built | `g3/gen/LEDGER.json` |
+| **G6** differential testing and release | **0 unsound** in 8,465 generated-code cases (820 reported incomplete; 2,726 inputs skipped over budget); SLICE-001 acceptance passes on generated code; release gate not built | `g3/gen/LEDGER.json` |
 
 ## Frozen corpus
 
@@ -115,7 +115,7 @@ All three publish their key evidence as check-run annotations, and upload full e
 
 - Ledger the `postpone` build variant.
 - Record the base-image and published-image digests.
-- Widen the MathIR fragment toward the largest blocked classes (`Finset.sum`/`card` over ranges, `let`, multi-equation recursion), then re-measure coverage.
+- Widen the MathIR fragment toward the largest remaining blocked classes (`Int.natAbs`/`Int.toNat`, `Finset.sup`, `Nat.divisors`/`primeFactors`, `List` folds, `Nat.ofDigits`), then re-measure coverage.
 - Reduce incompleteness (intermediate overflow) without losing soundness.
 
 Resolved:

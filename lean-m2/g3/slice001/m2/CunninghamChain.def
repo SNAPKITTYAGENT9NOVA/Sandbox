@@ -1,0 +1,14 @@
+DEFINITION MODULE CunninghamChain;
+(* LEAN-M2-CC-001 SLICE-001: native Modula-2 implementation of the corpus definition
+     def firstKindTerm (p : N) : N -> N | 0 => p | n + 1 => 2 * firstKindTerm p n + 1
+   on 64-bit LONGCARD (width checked at run time by the test driver).
+   Native Modula-2, NOT a wrapper around the C implementation. It is hand-written from the
+   SLICE-001 semantic contract; a MathIR-driven generator (G3/G5) is to replace it. *)
+
+CONST
+  Ok       = 0;   (* out := firstKindTerm(p, n)              *)
+  Overflow = 1;   (* result exceeds MAX(LONGCARD); out untouched *)
+
+PROCEDURE FirstKindTerm (p, n: LONGCARD; VAR out: LONGCARD) : INTEGER;
+
+END CunninghamChain.

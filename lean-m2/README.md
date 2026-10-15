@@ -10,8 +10,10 @@ machine-readable evidence and blocks on anything unmeasured.
 | **G0** toolchain probe | **PASS** (`TOOLCHAIN_ONLY_PASS`), native AArch64 CI | `lean-m2 workstation (G0)` run annotations |
 | **G1** corpus inventory | **PASS** (pre-elaboration), Lean-native tool | `corpus.lock.yaml`, `corpus/…/EVIDENCE.sha256`, `lean-m2 G1` runs |
 | **G2** Lean validation and axiom ledger | **PASS** | `corpus/formal-conjectures/84cf7f8/g2-headline.json`, `corpus.lock.yaml` |
-| **G3** extraction to C | started: shortlist of 339 exact-domain definitions; first slice specified in `g3/SLICE-001-firstKindTerm.md` | `lean-m2 G2` run annotations |
-| **G4** CompCert build, **G5** Modula-2, **G6** differential testing and release | not started | |
+| **G3** extraction to C | 339 exact-domain candidates; **SLICE-001 done** (hand-written from the semantic contract, not yet auto-generated) | `g3/slice001/LEDGER.json` |
+| **G4** CompCert build | **PASS for SLICE-001** (ccomp 3.18, AArch64 ELF) | `g3/slice001/LEDGER.json` |
+| **G5** Modula-2 | **PASS for SLICE-001** (native module + C binding, gm2 13.3.0 ISO) | `g3/slice001/LEDGER.json` |
+| **G6** differential testing and release | **SLICE-001: 2,511 cases, 0 failures**; release gate not built | `lean-m2 SLICE-001` runs |
 
 ## Frozen corpus
 
@@ -113,11 +115,7 @@ All three publish their key evidence as check-run annotations, and upload full e
 
 - Ledger the `postpone` build variant.
 - Record the base-image and published-image digests.
-- SLICE-001 (`CunninghamChain.firstKindTerm`, see `g3/`):
-  - Lean lemmas for the closed form and the iteration bound;
-  - the C subset compiled with CompCert;
-  - the native Modula-2 module and the C binding;
-  - differential tests.
+- Generalize SLICE-001's hand-written C and Modula-2 into a MathIR-driven generator (G3/G5), then expand slice by slice through the 339 candidates.
 
 Resolved:
 - **The `lcProof` dependent** is a compiler-generated `unsafe` auxiliary (`Nat.primeFactorsEq.unsafe_1`).

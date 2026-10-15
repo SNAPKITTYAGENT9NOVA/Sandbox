@@ -1,0 +1,9 @@
+DEFINITION MODULE FOR "C" lm2_cases;
+(* Binding to the Lean-generated reference vectors (lm2_cases.c, built by Spec.lean). *)
+FROM SYSTEM IMPORT ADDRESS;
+EXPORT UNQUALIFIED lm2_case_count, lm2_case_get;
+
+PROCEDURE lm2_case_count () : CARDINAL;
+PROCEDURE lm2_case_get (i: CARDINAL; p, n, st, v: ADDRESS) : INTEGER;
+
+END lm2_cases.

@@ -132,8 +132,14 @@ jobs:
         run: |
           A=lean-m2/scripts/annotate.sh
           [ -f "$EVID/gen/report.txt" ] && $A notice "MathIR report" "$EVID/gen/report.txt" 120
+          if [ -f "$EVID/gen/progress.log" ]; then
+            { grep -E 'candidates=|done' "$EVID/gen/progress.log"; echo '--- slowest steps ---';
+              awk '{t=$1+0; if (NR>1) print t-p, prev; p=t; prev=$0}' "$EVID/gen/progress.log" | sort -rn | head -12; } > "$RUNNER_TEMP/p.txt"
+            $A notice "MathIR timings" "$RUNNER_TEMP/p.txt" 25
+          fi
           if ! grep -q 'translated=' "$EVID/mathir.log" 2>/dev/null; then
-            { grep -n -E 'error' "$EVID/mathir.log" | head -25; echo '--- log tail ---'; tail -15 "$EVID/mathir.log"; } > "$RUNNER_TEMP/e.txt" 2>/dev/null || true
+            { grep -n -E 'error' "$EVID/mathir.log" | head -25; echo '--- log tail ---'; tail -15 "$EVID/mathir.log";
+              echo '--- progress.log tail (timestamps from start of the #eval) ---'; tail -25 "$EVID/gen/progress.log"; } > "$RUNNER_TEMP/e.txt" 2>/dev/null || true
             $A error "MathIR errors and log tail" "$RUNNER_TEMP/e.txt" 45
           fi
 

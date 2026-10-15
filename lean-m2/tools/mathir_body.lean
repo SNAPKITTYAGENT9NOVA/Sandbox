@@ -695,6 +695,33 @@ def chk (b : Budget) (v : Nat) : IRM Nat :=
 
 def b2n (p : Bool) : Nat := if p then 1 else 0
 
+/-- Independent exact implementations for the interpreter (Lean core only; the fidelity check then
+compares them against Mathlib's compiled definitions inside the corpus functions). -/
+def factN (n : Nat) : Nat := Id.run do
+  let mut a := 1
+  for i in [2:n + 1] do a := a * i
+  return a
+
+/-- C(n, k) by the exact multiplicative formula; 0 if k > n. -/
+def chooseN (n k : Nat) : Nat := Id.run do
+  if k > n then return 0
+  let k := min k (n - k)
+  let mut c := 1
+  for i in [1:k + 1] do c := c * (n - k + i) / i
+  return c
+
+/-- Mathlib's `Nat.minFac`: minFac 0 = 2, minFac 1 = 1, else the least prime factor. -/
+def minFacN (n : Nat) : Nat := Id.run do
+  if n == 0 then return 2
+  if n == 1 then return 1
+  if n % 2 == 0 then return 2
+  let mut d := 3
+  while d * d ≤ n do
+    if n % d == 0 then return d
+    d := d + 2
+  return n
+
+
 mutual
 partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat) (i : Nat)
     (w : Array Nat) (lv : Std.HashMap Nat Nat) : E → IRM Nat
@@ -726,11 +753,11 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     | "max" => pure (max a c)
     | "gcd" => pure (Nat.gcd a c)
     | "lcm" => chk b (Nat.lcm a c)
-    | "fact" => if a > 1000 then throw "size budget" else chk b (Nat.factorial a)
-    | "choose" => if a > 24 then throw "choose budget" else pure (Nat.choose a c)
+    | "fact" => if a > 1000 then throw "size budget" else chk b (factN a)
+    | "choose" => if a > 24 then throw "choose budget" else pure (chooseN a c)
     | "sqrt" => pure (Nat.sqrt a)
-    | "minfac" => if a > 2 ^ 20 then throw "minFac budget" else pure (Nat.minFac a)
-    | "prime" => if a > 2 ^ 20 then throw "prime budget" else pure (b2n (a ≥ 2 && Nat.minFac a == a))
+    | "minfac" => if a > 2 ^ 20 then throw "minFac budget" else pure (minFacN a)
+    | "prime" => if a > 2 ^ 20 then throw "prime budget" else pure (b2n (a ≥ 2 && minFacN a == a))
     | _ => pure (b2n (if a == 0 then c == 0 else c % a == 0))   -- dvd
   | .cmp k x y => do
     let a ← evalE b defs args i w lv x

@@ -81,6 +81,15 @@ def axiomsOf (env : Environment) (memo : IO.Ref (Std.HashMap Name (Array Name)))
             stack := stack.push (d, false)
   return (← memo.get).getD root #[]
 
+/-- Type facts for G3 planning (only computed for candidate defs):
+the constants mentioned in the type, whether the result sort is `Prop`, and the pretty type. -/
+def typeInfo (ci : ConstantInfo) : MetaM (Array String × Bool × String) := do
+  let consts := (ci.type.getUsedConstants.foldl (fun (s : NameSet) n => s.insert n) {}).toList
+    |>.map Name.toString |>.toArray.qsort (· < ·)
+  let retProp ← Meta.forallTelescopeReducing ci.type fun _ b => pure b.isProp
+  let pp ← try pure (toString (← Meta.ppExpr ci.type)) catch _ => pure "<pp failed>"
+  return (consts, retProp, pp)
+
 end LeanM2Ledger
 
 open LeanM2Ledger in
@@ -102,7 +111,13 @@ set_option maxHeartbeats 0 in
       let name := ci.name
       let axs ← axiomsOf env memo name
       let directSorry := ci.type.hasSorry || (ci.value? (allowOpaque := true) |>.any (·.hasSorry))
-      let row := Json.mkObj [
+      let isCandidateShape := kindOf ci == "def" && safetyOf ci == "safe" &&
+        !isNoncomputable env name && !name.isInternal
+      let extra : List (String × Json) ← if isCandidateShape then do
+          let (cs, rp, pp) ← Meta.MetaM.run' (typeInfo ci)
+          pure [("type_consts", toJson cs), ("returns_prop", toJson rp), ("type_pp", toJson pp)]
+        else pure []
+      let row := Json.mkObj <| extra ++ [
         ("name", toJson name.toString),
         ("module", toJson modName.toString),
         ("module_components", toJson modComps),

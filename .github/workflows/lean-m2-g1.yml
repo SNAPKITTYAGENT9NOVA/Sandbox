@@ -1,0 +1,92 @@
+name: lean-m2 G1 (Lean-native inventory)
+
+# Fast job: needs only Lean core (no Mathlib build). Validates the Lean implementation of G1:
+#   1. SHA-256 against FIPS/NIST test vectors (--selftest),
+#   2. every file hash against sha256sum,
+#   3. semantic equality with the Python G1 implementation (while both exist).
+
+on:
+  pull_request:
+    paths: ['lean-m2/tools/G1Inventory.lean', 'lean-m2/tools/compare_g1.py', 'lean-m2/tools/g1_inventory.py',
+            'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g1.yml']
+  push:
+    branches: [main]
+    paths: ['lean-m2/tools/G1Inventory.lean', 'lean-m2/tools/compare_g1.py', 'lean-m2/tools/g1_inventory.py',
+            'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g1.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-m2-g1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  g1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CORPUS: ${{ github.workspace }}/corpus
+      EVID: ${{ github.workspace }}/evidence
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch corpus at the locked commit
+        run: |
+          COMMIT=$(awk '/^  commit:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          REPO=$(awk '/^  repository:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          git init -q "$CORPUS"
+          git -C "$CORPUS" fetch -q --depth 1 "$REPO" "$COMMIT"
+          git -C "$CORPUS" checkout -q FETCH_HEAD
+          test "$(git -C "$CORPUS" rev-parse HEAD)" = "$COMMIT"
+          mkdir -p "$EVID"
+
+      - name: Install the corpus toolchain (Lean core only)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain "$(cat "$CORPUS/lean-toolchain")"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: SHA-256 self-test (FIPS 180-4 vectors)
+        run: |
+          lean --version | tee "$EVID/lean-version.txt"
+          lean --run lean-m2/tools/G1Inventory.lean --selftest 2>&1 | tee "$EVID/selftest.log"
+
+      - name: Lean G1 inventory
+        run: |
+          set +e
+          start=$(date +%s)
+          lean --run lean-m2/tools/G1Inventory.lean "$CORPUS" "$EVID/lean" > "$EVID/lean-g1.log" 2>&1
+          rc=$?; set -e
+          echo "exit=$rc seconds=$(( $(date +%s) - start ))" | tee -a "$EVID/lean-g1.log"
+          tail -20 "$EVID/lean-g1.log"
+          test $rc -eq 0
+
+      - name: Every file hash vs sha256sum
+        run: cd "$CORPUS" && sha256sum --quiet -c "$EVID/lean/source-tree.sha256" && echo "all hashes match sha256sum"
+
+      - name: Differential vs Python G1
+        run: |
+          python3 -I lean-m2/tools/g1_inventory.py "$CORPUS" "$EVID/python" > /dev/null
+          python3 -I lean-m2/tools/compare_g1.py "$EVID/python" "$EVID/lean" | tee "$EVID/compare.log"
+
+      - name: Lean output hashes (for EVIDENCE.sha256)
+        if: always()
+        run: (cd "$EVID/lean" 2>/dev/null && sha256sum inventory.json imports.json source-hashes.json source-tree.sha256) | tee "$EVID/lean-output.sha256" || true
+
+      - name: Publish evidence as annotations
+        if: always()
+        run: |
+          A=lean-m2/scripts/annotate.sh
+          { cat "$EVID/lean-version.txt" "$EVID/selftest.log" 2>/dev/null; tail -3 "$EVID/lean-g1.log" 2>/dev/null; } > "$RUNNER_TEMP/a1.txt"
+          $A notice "G1 Lean: selftest and run" "$RUNNER_TEMP/a1.txt" 40
+          [ -f "$EVID/compare.log" ] && $A notice "G1 differential" "$EVID/compare.log" 50
+          [ -s "$EVID/lean-output.sha256" ] && $A notice "G1 Lean output sha256" "$EVID/lean-output.sha256" 10
+          grep -q 'exit=0' "$EVID/lean-g1.log" 2>/dev/null || $A error "G1 Lean run log" "$EVID/lean-g1.log" 60
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g1-lean-evidence
+          path: evidence/

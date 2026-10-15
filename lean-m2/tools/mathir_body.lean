@@ -40,14 +40,14 @@ inductive E where
   | call (fn : Name) (args : List E)
   deriving Inhabited, BEq
 
-partial def E.toJson : E → Json
-  | .lit n => Json.mkObj [("lit", toJson (toString n))]
-  | .arg i => Json.mkObj [("arg", toJson i)]
-  | .idx => Json.mkObj [("idx", toJson true)]
-  | .acc => Json.mkObj [("acc", toJson true)]
-  | .bin op a b => Json.mkObj [("op", toJson op), ("a", a.toJson), ("b", b.toJson)]
-  | .ite c a b t e => Json.mkObj [("if", toJson c), ("a", a.toJson), ("b", b.toJson), ("then", t.toJson), ("else", e.toJson)]
-  | .call f as => Json.mkObj [("call", toJson f.toString), ("args", toJson (as.map E.toJson))]
+partial def E.json : E → Json
+  | .lit n => Json.mkObj [("lit", Lean.toJson (toString n))]
+  | .arg i => Json.mkObj [("arg", Lean.toJson i)]
+  | .idx => Json.mkObj [("idx", Lean.toJson true)]
+  | .acc => Json.mkObj [("acc", Lean.toJson true)]
+  | .bin op a b => Json.mkObj [("op", Lean.toJson op), ("a", a.json), ("b", b.json)]
+  | .ite c a b t e => Json.mkObj [("if", Lean.toJson c), ("a", a.json), ("b", b.json), ("then", t.json), ("else", e.json)]
+  | .call f as => Json.mkObj [("call", Lean.toJson f.toString), ("args", Lean.toJson (as.map E.json))]
 
 partial def E.calls : E → List Name
   | .bin _ a b => a.calls ++ b.calls
@@ -55,13 +55,13 @@ partial def E.calls : E → List Name
   | .call f as => f :: as.flatMap E.calls
   | _ => []
 
-inductive Def where
-  | nonrec (arity : Nat) (body : E)
+inductive FnDef where
+  | direct (arity : Nat) (body : E)      -- non-recursive (`nonrec` is a Lean keyword)
   | primrec (arity : Nat) (recArg : Nat) (base : E) (step : E)
   deriving Inhabited
 
-def Def.arity : Def → Nat
-  | .nonrec a _ => a
+def FnDef.arity : FnDef → Nat
+  | .direct a _ => a
   | .primrec a _ _ _ => a
 
 partial def E.hasPow : E → Bool
@@ -70,12 +70,12 @@ partial def E.hasPow : E → Bool
   | .call _ as => as.any E.hasPow
   | _ => false
 
-def Def.hasPow : Def → Bool
-  | .nonrec _ e => e.hasPow
+def FnDef.hasPow : FnDef → Bool
+  | .direct _ e => e.hasPow
   | .primrec _ _ b s => b.hasPow || s.hasPow
 
-def Def.calls : Def → List Name
-  | .nonrec _ b => b.calls
+def FnDef.calls : FnDef → List Name
+  | .direct _ b => b.calls
   | .primrec _ _ b s => b.calls ++ s.calls
 
 /-! ## Reading Lean expressions -/
@@ -187,7 +187,7 @@ def natArity? (ty : Expr) : MetaM (Option Nat) :=
     return some xs.size
 
 /-- Read the definition from its equation lemmas (or, if it has none, its body). -/
-def extract (n : Name) (arity : Nat) : MetaM (Except String Def) := do
+def extract (n : Name) (arity : Nat) : MetaM (Except String FnDef) := do
   let eqns? ← try getEqnsFor? n catch _ => pure none
   match eqns? with
   | none | some #[] =>
@@ -197,7 +197,7 @@ def extract (n : Name) (arity : Nat) : MetaM (Except String Def) := do
     lambdaTelescope v fun xs body => do
       if xs.size != arity then return .error "body arity differs from type arity"
       match ← tr { self := n, args := xs, idx? := none, recArg := none } body with
-      | .ok e => return .ok (.nonrec arity e)
+      | .ok e => return .ok (.direct arity e)
       | .error r => return .error r
   | some eqns =>
     if eqns.size == 1 then
@@ -207,7 +207,7 @@ def extract (n : Name) (arity : Nat) : MetaM (Except String Def) := do
         let largs := lhs.getAppArgs
         unless largs.all (·.isFVar) && largs.size == arity do return .error "pattern-matching single equation"
         match ← tr { self := n, args := largs, idx? := none, recArg := none } rhs with
-        | .ok e => return .ok (.nonrec arity e)
+        | .ok e => return .ok (.direct arity e)
         | .error r => return .error r
     else if eqns.size == 2 then
       -- expect: one equation with argument j = 0, one with argument j = m + 1
@@ -307,11 +307,11 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
 def cParams (arity : Nat) : String :=
   ", ".intercalate ((List.range arity).map (s!"uint64_t a{·}") ++ ["uint64_t *out"])
 
-def cFunction (sym : Name → String) (n : Name) (d : Def) : String :=
+def cFunction (sym : Name → String) (n : Name) (d : FnDef) : String :=
   let body : CGM Unit := do
     emitC "  if (out == 0) return LM2_ERR_NULL;"
     match d with
-    | .nonrec _ e =>
+    | .direct _ e =>
       let r ← cExpr sym "  " e
       emitC s!"  *out = {r};"
     | .primrec _ j b s =>
@@ -377,10 +377,10 @@ def mParams (arity : Nat) : String :=
   let as := ", ".intercalate ((List.range arity).map (s!"a{·}"))
   s!"{as}: LONGCARD; VAR out: LONGCARD"
 
-def mProcedure (sym : Name → String) (n : Name) (d : Def) : String :=
+def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
   let body : MGM Unit := do
     match d with
-    | .nonrec _ e =>
+    | .direct _ e =>
       let r ← mExpr sym "  " e
       emitM s!"  out := {r};"
     | .primrec _ j b s =>
@@ -402,6 +402,75 @@ def mProcedure (sym : Name → String) (n : Name) (d : Def) : String :=
     "\n".intercalate st.lines.toList ++ s!"\nEND {sym n};\n"
 
 /-! ## Reference values -/
+
+/-! ## Budgeted IR interpreter (exact ℕ, aborts instead of exploding) -/
+
+/-- Limits: any intermediate above `2^maxBits`, or more than `maxSteps` loop iterations / calls
+in total, aborts the evaluation (`none`). Used to (1) decide which inputs are safe to evaluate
+with the corpus definition and (2) check extraction fidelity: on every evaluated input the IR must
+agree with Lean's compiled corpus definition. -/
+structure Budget where
+  maxBits  : Nat := 4096
+  steps    : Nat := 200000
+
+abbrev IRM := StateT Nat (Except String)   -- state: steps used; error = aborted
+
+def tick (b : Budget) : IRM Unit := do
+  let s ← get
+  if s ≥ b.steps then throw "step budget"
+  set (s + 1)
+
+def chk (b : Budget) (v : Nat) : IRM Nat :=
+  if v.log2 ≥ b.maxBits then throw "size budget" else pure v
+
+mutual
+partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat) (i acc : Nat) : E → IRM Nat
+  | .lit n => pure n
+  | .arg k => pure (args.getD k 0)
+  | .idx => pure i
+  | .acc => pure acc
+  | .bin op x y => do
+    let a ← evalE b defs args i acc x
+    let c ← evalE b defs args i acc y
+    match op with
+    | "add" => chk b (a + c)
+    | "mul" => chk b (a * c)
+    | "sub" => pure (a - c)
+    | "div" => pure (a / c)
+    | "mod" => pure (a % c)
+    | _ =>  -- pow: refuse before computing if the result would exceed the budget
+      if a ≤ 1 || c == 0 then pure (a ^ c)
+      else if c * (a.log2 + 1) > b.maxBits + 64 then throw "size budget"
+      else chk b (a ^ c)
+  | .ite k x y t e => do
+    let a ← evalE b defs args i acc x
+    let c ← evalE b defs args i acc y
+    let cond : Bool := match k with | "lt" => decide (a < c) | "le" => decide (a ≤ c) | _ => a == c
+    if cond then evalE b defs args i acc t else evalE b defs args i acc e
+  | .call f xs => do
+    tick b
+    let mut vs : Array Nat := #[]
+    for x in xs do vs := vs.push (← evalE b defs args i acc x)
+    let some d := defs.get? f | throw "unknown callee"
+    evalDef b defs d vs
+
+partial def evalDef (b : Budget) (defs : Std.HashMap Name FnDef) (d : FnDef) (vs : Array Nat) : IRM Nat := do
+  match d with
+  | .direct _ e => evalE b defs vs 0 0 e
+  | .primrec _ j base step =>
+    let mut a ← evalE b defs vs 0 0 base
+    for m in [0:vs.getD j 0] do
+      tick b
+      a ← evalE b defs vs m a step
+    return a
+end
+
+def runIR (defs : Std.HashMap Name FnDef) (n : Name) (xs : List Nat) : Option Nat :=
+  match defs.get? n with
+  | none => none
+  | some d => match (evalDef {} defs d xs.toArray).run 0 with
+    | .ok (v, _) => some v
+    | .error _ => none
 
 def u64Max : Nat := 2 ^ 64 - 1
 
@@ -461,8 +530,9 @@ set_option maxHeartbeats 0 in
       if let some k ← natArity? ci.type then cands := cands.push (ci.name, k)
   cands := cands.qsort (fun a b => a.1.toString < b.1.toString)
   -- 2. extract
-  let mut defs : Std.HashMap Name Def := {}
+  let mut defs : Std.HashMap Name FnDef := {}
   let mut blocked : Array (Name × String) := #[]
+  (← IO.getStdout).putStrLn s!"MATHIR candidates={cands.size} (extracting)"; (← IO.getStdout).flush
   for (n, k) in cands do
     match ← (try extract n k catch e => do pure (.error s!"exception: {← e.toMessageData.toString}")) with
     | .ok d => defs := defs.insert n d
@@ -537,19 +607,35 @@ set_option maxHeartbeats 0 in
   let mut cFn := ""; let mut cA0 := ""; let mut cA1 := ""; let mut cA2 := ""; let mut cSt := ""; let mut cV := ""
   let mut ncases := 0; let mut nok := 0
   let mut evalFail : Array (Name × String) := #[]
+  let mut mismatch : Array (Name × List Nat × Nat × Nat) := #[]
+  let mut skipped := 0
+  let stdout ← IO.getStdout
   for h : i in [0:order.size] do
     let n := order[i]
     let d := defs.get! n
+    stdout.putStrLn s!"MATHIR eval {i + 1}/{order.size} {n}"; stdout.flush
     for xs in inputs d.arity (reach.getD n false) (0x5EED0000 + i.toUInt64) do
+      -- 1. budget gate: the IR evaluation must finish within size/step limits
+      let irv? := runIR defs n xs
+      if irv?.isNone then
+        skipped := skipped + 1
+        continue
+      let irv := irv?.getD 0
+      -- 2. exact reference from the corpus definition (Lean's compiled code)
       match unsafe evalN env n d.arity xs with
       | .error e => evalFail := evalFail.push (n, e); break
       | .ok v =>
+        -- 3. extraction fidelity: IR semantics must equal the corpus definition
+        if v != irv then mismatch := mismatch.push (n, xs, v, irv)
         let (st, val) := if v ≤ u64Max then (0, v) else (1, 0)
         let pad := xs ++ List.replicate (3 - xs.length) 0
         cFn := cFn ++ s!"{i}u,"; cA0 := cA0 ++ s!"{pad[0]!}ULL,"; cA1 := cA1 ++ s!"{pad[1]!}ULL,"
         cA2 := cA2 ++ s!"{pad[2]!}ULL,"; cSt := cSt ++ s!"{st},"; cV := cV ++ s!"{val}ULL,"
         ncases := ncases + 1
         if st == 0 then nok := nok + 1
+  unless mismatch.isEmpty do
+    let first := mismatch.toList.take 10 |>.map fun (n, xs, v, w) => s!"{n} {xs}: lean={v} ir={w}"
+    throwError m!"EXTRACTION FIDELITY FAILURE ({mismatch.size} mismatches): {first}"
   unless evalFail.isEmpty do throwError m!"reference evaluation failed: {evalFail.toList.map (·.1)}"
   IO.FS.writeFile (out "lm2_gen_cases.c") <|
     "/* Generated by mathir_body.lean: Lean-evaluated reference values. Do not edit. */\n#include <stdint.h>\n#include <stddef.h>\n" ++
@@ -564,8 +650,8 @@ set_option maxHeartbeats 0 in
       Json.mkObj ([("id", toJson i), ("name", toJson n.toString), ("c_symbol", toJson (cSym n)),
         ("m2_symbol", toJson (mSym n)), ("arity", toJson d.arity)] ++
         match d with
-        | .nonrec _ e => [("kind", toJson "nonrec"), ("body", e.toJson)]
-        | .primrec _ j b s => [("kind", toJson "primrec"), ("rec_arg", toJson j), ("base", b.toJson), ("step", s.toJson)])))]
+        | .direct _ e => [("kind", toJson "nonrec"), ("body", e.json)]
+        | .primrec _ j b s => [("kind", toJson "primrec"), ("rec_arg", toJson j), ("base", b.json), ("step", s.json)])))]
   IO.FS.writeFile (out "mathir.json") (irJson.pretty ++ "\n")
   let blockedSorted := blocked.qsort (fun a b => a.1.toString < b.1.toString)
   IO.FS.writeFile (out "blocked.json") ((toJson (blockedSorted.map fun (n, r) =>
@@ -582,8 +668,8 @@ set_option maxHeartbeats 0 in
       let k := (r.drop 13).toString
       consts := consts.insert k (consts.getD k 0 + 1)
   let topConsts := ((consts.toList.toArray.qsort (fun a b => a.2 > b.2)).toList.take 15).map fun (k, v) => s!"  {v}  {k}"
-  let report := s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok}\n" ++
+  let report := s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok} skipped_over_budget={skipped} ir_fidelity_mismatches=0\n" ++
     "translated:\n" ++ String.join (order.toList.map fun n => s!"  {n} ({(defs.get! n).arity}-ary{if isRec n then ", primrec" else ""})\n") ++
     "blocked reasons:\n" ++ "\n".intercalate histLines ++ "\ntop unsupported constants:\n" ++ "\n".intercalate topConsts ++ "\n"
   IO.FS.writeFile (out "report.txt") report
-  IO.println s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok}"
+  IO.println s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok} skipped_over_budget={skipped} ir_fidelity_mismatches=0"

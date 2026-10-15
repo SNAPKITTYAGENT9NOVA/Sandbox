@@ -50,13 +50,14 @@ inductive E where
   | prev (j : Nat)                       -- f … (m + j) …  (step only, j < K)
   | lvar (id : Nat)                      -- loop variable
   | bin  (op : String) (a b : E)         -- add mul sub div mod pow
-  | prim (op : String) (args : List E)   -- min max gcd lcm fact choose sqrt minfac | dvd prime (boolean)
+  | prim (op : String) (args : List E)   -- min max gcd lcm fact choose sqrt minfac fib log log2 padic
+                                         -- bigomega digsum diglen digrev | dvd prime (boolean)
   | cmp  (k : String) (a b : E)          -- lt le eq (boolean)
   | and  (a b : E)
   | or   (a b : E)
   | not  (a : E)
   | ite  (c t e : E)                     -- c is boolean
-  | fold (op : String) (id : Nat) (lo hi : E) (incl : Bool) (filt : E) (body : E)  -- sum prod count
+  | fold (op : String) (id : Nat) (lo hi : E) (incl : Bool) (filt : E) (body : E)  -- sum prod count max
   | call (fn : Name) (args : List E)
 
 instance : Inhabited E := ⟨.lit 0⟩
@@ -93,7 +94,7 @@ partial def E.calls (e : E) : List Name :=
 partial def E.heavy (e : E) : Bool :=
   (match e with
    | .bin "pow" _ _ | .fold .. => true
-   | .prim op _ => op ∈ ["fact", "choose", "minfac", "prime", "lcm"]
+   | .prim op _ => op ∈ ["fact", "choose", "minfac", "prime", "lcm", "fib", "bigomega"]
    | _ => false) || e.children.any E.heavy
 
 inductive FnDef where
@@ -196,6 +197,66 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if fn == `Nat.factorial && args.size == 1 then return .prim "fact" [← tr c args[0]!]
   if fn == `Nat.sqrt && args.size == 1 then return .prim "sqrt" [← tr c args[0]!]
   if fn == `Nat.minFac && args.size == 1 then return .prim "minfac" [← tr c args[0]!]
+  -- MathIR v3 builtins (exact semantics re-checked against the compiled corpus by the fidelity check)
+  if fn == ``id && args.size == 2 then return ← tr c args[1]!
+  if fn == `Nat.fib && args.size == 1 then return .prim "fib" [← tr c args[0]!]
+  if fn == `Nat.log && args.size == 2 then return .prim "log" [← tr c args[0]!, ← tr c args[1]!]
+  if fn == ``Nat.log2 && args.size == 1 then return .prim "log2" [← tr c args[0]!]
+  if fn == `padicValNat && args.size == 2 then return .prim "padic" [← tr c args[0]!, ← tr c args[1]!]
+  -- φ n = #{a ∈ range n | n.Coprime a}
+  if fn == `Nat.totient && args.size == 1 then
+    let n ← tr c args[0]!
+    let id ← fresh c
+    return .fold "count" id (.lit 0) n false (.cmp "eq" (.prim "gcd" [n, .lvar id]) (.lit 1)) (.lit 1)
+  -- arithmetic functions applied through `DFunLike.coe`: σ k, ω, Ω
+  if fn == `DFunLike.coe && args.size == 6 then
+    let F := args[0]!.consumeMData
+    unless F.getAppFn.isConstOf `ArithmeticFunction && F.getAppNumArgs == 2 && isNatTy F.getAppArgs[0]! do
+      bail s!"unsupported: DFunLike.coe"
+    let x ← tr c args[5]!
+    let (g, gargs) := args[4]!.consumeMData.getAppFnArgs
+    if g == `ArithmeticFunction.sigma && gargs.size == 1 then
+      let k ← tr c gargs[0]!
+      let id ← fresh c
+      return .fold "sum" id (.lit 1) x true (.prim "dvd" [.lvar id, x]) (.bin "pow" (.lvar id) k)
+    if g == `ArithmeticFunction.cardDistinctFactors && gargs.size == 0 then
+      let id ← fresh c
+      return .fold "count" id (.lit 1) x true (.and (.prim "dvd" [.lvar id, x]) (.prim "prime" [.lvar id])) (.lit 1)
+    if g == `ArithmeticFunction.cardFactors && gargs.size == 0 then return .prim "bigomega" [x]
+    bail s!"unsupported: arithmetic function {g}"
+  -- digit functions and prime-factor list lengths
+  if fn == ``List.sum && args.size == 4 && isNatTy args[0]! then
+    let (g, ga) := (args[3]!.consumeMData).getAppFnArgs
+    if g == `Nat.digits && ga.size == 2 then return .prim "digsum" [← tr c ga[0]!, ← tr c ga[1]!]
+    bail "unsupported: List.sum"
+  if fn == ``List.length && args.size == 2 && isNatTy args[0]! then
+    let (g, ga) := (args[1]!.consumeMData).getAppFnArgs
+    if g == `Nat.digits && ga.size == 2 then return .prim "diglen" [← tr c ga[0]!, ← tr c ga[1]!]
+    if g == `Nat.primeFactorsList && ga.size == 1 then return .prim "bigomega" [← tr c ga[0]!]
+    if g == `List.dedup && ga.size == 3 then
+      let (h, ha) := (ga[2]!.consumeMData).getAppFnArgs
+      if h == `Nat.primeFactorsList && ha.size == 1 then
+        let x ← tr c ha[0]!
+        let id ← fresh c
+        return .fold "count" id (.lit 1) x true (.and (.prim "dvd" [.lvar id, x]) (.prim "prime" [.lvar id])) (.lit 1)
+    bail "unsupported: List.length"
+  -- ofDigits b (digits b n).reverse : digit reversal (same base on both sides)
+  if fn == `Nat.ofDigits && args.size == 4 && isNatTy args[0]! then
+    let (g, ga) := (args[3]!.consumeMData).getAppFnArgs
+    if g == ``List.reverse && ga.size == 2 then
+      let (h, ha) := (ga[1]!.consumeMData).getAppFnArgs
+      if h == `Nat.digits && ha.size == 2 then
+        unless (← isDefEq args[2]! ha[0]!) do bail "unsupported: Nat.ofDigits (bases differ)"
+        return .prim "digrev" [← tr c args[2]!, ← tr c ha[1]!]
+    bail "unsupported: Nat.ofDigits"
+  -- Finset.sup f over a ℕ source, into ℕ (⊥ = 0)
+  if fn == `Finset.sup && args.size == 6 then
+    unless isNatTy args[0]! && isNatTy args[1]! do bail "Finset.sup over a non-ℕ type"
+    let id ← fresh c
+    let (lo, hi, incl, filt) ← source c id args[4]!
+    let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := c.loops.push (x, id) } (args[5]!.beta #[x])
+    return .fold "max" id lo hi incl filt body
   -- if-then-else on a decidable predicate
   if fn == ``ite && args.size == 5 then
     unless isNatTy args[0]! do bail "ite at a non-ℕ type"
@@ -255,6 +316,7 @@ partial def trProp (c : Ctx) (p : Expr) : TrM E := do
   | ``Or, #[q, r] => return .or (← trProp c q) (← trProp c r)
   | ``Dvd.dvd, #[ty, _, a, b] => if isNatTy ty then return .prim "dvd" [← tr c a, ← tr c b] else bail "∣ at a non-ℕ type"
   | `Nat.Prime, #[n] => return .prim "prime" [← tr c n]
+  | `Nat.Coprime, #[a, b] => return .cmp "eq" (.prim "gcd" [← tr c a, ← tr c b]) (.lit 1)
   | `Even, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 0) else bail "Even at a non-ℕ type"
   | `Odd, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 1) else bail "Odd at a non-ℕ type"
   | _, _ => bail s!"unsupported predicate: {fn}"
@@ -280,6 +342,14 @@ partial def source (c : Ctx) (id : Nat) (s : Expr) : TrM (E × E × Bool × E) :
       trProp { c with loops := c.loops.push (x, id) } (args[1]!.beta #[x])
     let filt := match f0 with | .lit 1 => f1 | _ => .and f0 f1
     return (lo, hi, incl, filt)
+  -- divisors n = {d ∈ Ico 1 (n + 1) | d ∣ n};  properDivisors n = {d ∈ Ico 1 n | d ∣ n}
+  -- primeFactors n = the primes dividing n (∅ for n = 0)
+  if (fn == `Nat.divisors || fn == `Nat.properDivisors || fn == `Nat.primeFactors) && args.size == 1 then
+    let n ← tr c args[0]!
+    let dv := E.prim "dvd" [.lvar id, n]
+    if fn == `Nat.divisors then return (.lit 1, n, true, dv)
+    if fn == `Nat.properDivisors then return (.lit 1, n, false, dv)
+    return (.lit 1, n, true, .and dv (.prim "prime" [.lvar id]))
   bail s!"unsupported Finset source: {fn}"
 
 end
@@ -390,7 +460,7 @@ abbrev CGM := StateM CG
 def emitC (l : String) : CGM Unit := modify fun s => { s with lines := s.lines.push l }
 def freshC : CGM String := modifyGet fun s => (s!"t{s.tmp}", { s with tmp := s.tmp + 1 })
 
-def cPrimOverflowing : List String := ["gcd", "lcm", "fact", "choose", "sqrt", "minfac"]
+def cPrimOverflowing : List String := ["gcd", "lcm", "fact", "choose", "sqrt", "minfac", "fib", "digrev"]
 
 /-- Emit C statements computing `e`; returns the C expression holding its value. -/
 partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
@@ -475,6 +545,9 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
     let ind3 := ind2 ++ "  "
     if op == "count" then
       emitC s!"{ind3}if (lm2_add({t}, 1ULL, &{t})) return LM2_OVERFLOW;"
+    else if op == "max" then
+      let b ← cExpr sym ind3 body
+      emitC s!"{ind3}if ({b} > {t}) {t} = {b};"
     else
       let b ← cExpr sym ind3 body
       emitC s!"{ind3}if (lm2_{if op == "prod" then "mul" else "add"}({t}, {b}, &{t})) return LM2_OVERFLOW;"
@@ -541,7 +614,9 @@ def m2Bin : String → String
 
 def m2Prim : String → String
   | "min" => "Min" | "max" => "Max" | "gcd" => "Gcd" | "lcm" => "Lcm" | "fact" => "Fact"
-  | "choose" => "Choose" | "sqrt" => "Sqrt" | "minfac" => "MinFac" | "prime" => "IsPrime" | _ => "Dvd"
+  | "choose" => "Choose" | "sqrt" => "Sqrt" | "minfac" => "MinFac" | "prime" => "IsPrime"
+  | "fib" => "Fib" | "log" => "Log" | "log2" => "Log2" | "padic" => "PadicVal" | "bigomega" => "BigOmega"
+  | "digsum" => "DigSum" | "diglen" => "DigLen" | "digrev" => "DigRev" | _ => "Dvd"
 
 partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
   | .lit n => pure (toString n)
@@ -622,6 +697,9 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
     let ind3 := ind2 ++ "  "
     if op == "count" then
       emitM s!"{ind3}IF LM2Nat.Add({t}, 1, {t}) THEN RETURN Overflow END"
+    else if op == "max" then
+      let b ← mExpr sym ind3 body
+      emitM s!"{ind3}IF {b} > {t} THEN {t} := {b} END"
     else
       let b ← mExpr sym ind3 body
       emitM s!"{ind3}IF LM2Nat.{if op == "prod" then "Mul" else "Add"}({t}, {b}, {t}) THEN RETURN Overflow END"
@@ -728,6 +806,65 @@ def chooseN (n k : Nat) : Nat := Id.run do
   for i in [1:k + 1] do c := c * (n - k + i) / i
   return c
 
+/-- Mathlib's `Nat.digits` (little-endian): base 0 gives `[n]` (n > 0), base 1 gives n ones. -/
+def digitsN (b n : Nat) : List Nat := Id.run do
+  if n == 0 then return []
+  if b == 0 then return [n]
+  if b == 1 then return List.replicate n 1
+  let mut out : Array Nat := #[]
+  let mut m := n
+  while m > 0 do
+    out := out.push (m % b)
+    m := m / b
+  return out.toList
+
+/-- `Nat.fib`: fib 0 = 0, fib 1 = 1. -/
+def fibN (n : Nat) : Nat := Id.run do
+  let mut x := 0
+  let mut y := 1
+  for _ in [0:n] do
+    let z := x + y
+    x := y
+    y := z
+  return x
+
+/-- `Nat.ofDigits b L = L₀ + b * (L₁ + b * …)`. -/
+def ofDigitsN (b : Nat) (L : List Nat) : Nat := L.foldr (fun h acc => h + b * acc) 0
+
+/-- Floor logarithm, 0 for b ≤ 1 or n < b (Mathlib's `Nat.log`; `Nat.log2` is `logN 2`). -/
+def logN (b n : Nat) : Nat := Id.run do
+  if b ≤ 1 then return 0
+  let mut k := 0
+  let mut m := n
+  while m ≥ b do
+    m := m / b
+    k := k + 1
+  return k
+
+/-- `padicValNat p n`: 0 for p ≤ 1 or n = 0, else the exponent of p in n. -/
+def padicN (p n : Nat) : Nat := Id.run do
+  if p ≤ 1 || n == 0 then return 0
+  let mut k := 0
+  let mut m := n
+  while m % p == 0 do
+    m := m / p
+    k := k + 1
+  return k
+
+/-- Ω n = length of `Nat.primeFactorsList n` (0 for n ≤ 1). -/
+def bigOmegaN (n : Nat) : Nat := Id.run do
+  if n ≤ 1 then return 0
+  let mut k := 0
+  let mut m := n
+  let mut d := 2
+  while d * d ≤ m do
+    while m % d == 0 do
+      m := m / d
+      k := k + 1
+    d := d + 1
+  if m > 1 then k := k + 1
+  return k
+
 /-- Mathlib's `Nat.minFac`: minFac 0 = 2, minFac 1 = 1, else the least prime factor. -/
 def minFacN (n : Nat) : Nat := Id.run do
   if n == 0 then return 2
@@ -780,6 +917,16 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     | "sqrt" => pure (Nat.sqrt a)
     | "minfac" => if a > 2 ^ 20 then throw "minFac budget" else pure (minFacN a)
     | "prime" => if a > 2 ^ 20 then throw "prime budget" else pure (b2n (a ≥ 2 && minFacN a == a))
+    -- Mathlib's `Nat.fib` iterates n times; past fib 6000 the value exceeds 2^4096 anyway
+    | "fib" => if a > 6000 then throw "size budget" else chk b (fibN a)
+    | "log" => pure (logN a c)
+    | "log2" => pure (logN 2 a)
+    | "padic" => pure (padicN a c)
+    | "bigomega" => if a > 2 ^ 20 then throw "factor budget" else pure (bigOmegaN a)
+    -- base 1 builds a list of n ones (in Lean's reference too)
+    | "digsum" => if a == 1 && c > 2 ^ 16 then throw "digits budget" else pure (digitsN a c).sum
+    | "diglen" => if a == 1 && c > 2 ^ 16 then throw "digits budget" else pure (digitsN a c).length
+    | "digrev" => if a == 1 && c > 2 ^ 16 then throw "digits budget" else chk b (ofDigitsN a (digitsN a c).reverse)
     | _ => pure (b2n (if a == 0 then c == 0 else c % a == 0))   -- dvd
   | .cmp k x y => do
     let a ← evalE b defs args i w lv x
@@ -807,7 +954,7 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
         if op == "count" then acc := acc + 1
         else
           let v ← evalE b defs args i w lv' body
-          acc ← chk b (if op == "prod" then acc * v else acc + v)
+          acc ← chk b (if op == "prod" then acc * v else if op == "max" then max acc v else acc + v)
       k := k + 1
     return acc
   | .call f xs => do
@@ -1055,4 +1202,7 @@ set_option maxHeartbeats 0 in
     String.join (order.toList.map fun n => s!"  {n} ({(defs.get! n).arity}-ary{kindOf n})\n") ++
     "blocked reasons:\n" ++ "\n".intercalate histLines ++ "\ntop unsupported constants / predicates / sources:\n" ++ "\n".intercalate topConsts ++ "\n"
   IO.FS.writeFile (out "report.txt") report
+  -- per-function blocking reasons (sorted by name): the work list for widening the fragment
+  IO.FS.writeFile (out "blocked.txt") <| String.join <|
+    ((blocked.qsort (fun x y => x.1.toString < y.1.toString)).toList.map fun (n, r) => s!"{n}\t{r}\n")
   IO.println summary

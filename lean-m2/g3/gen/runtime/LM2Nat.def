@@ -1,5 +1,5 @@
 DEFINITION MODULE LM2Nat;
-(* LEAN-M2-CC-001 MathIR v1 runtime: checked LONGCARD operations with Lean ℕ semantics.
+(* LEAN-M2-CC-001 MathIR runtime (v1 core, v2/v3 builtins): checked LONGCARD operations with Lean ℕ semantics.
    Each returns TRUE on overflow (r NOT written), FALSE otherwise.
    Sub truncates at 0; x DIV 0 = 0; x MOD 0 = x; 0^0 = 1. Hand-written, fixed. *)
 PROCEDURE Add (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
@@ -19,4 +19,13 @@ PROCEDURE Sqrt (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;        (* floor *)
 PROCEDURE MinFac (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;      (* minFac 0 = 2, minFac 1 = 1 *)
 PROCEDURE IsPrime (n: LONGCARD) : LONGCARD;                     (* 1 / 0 *)
 PROCEDURE Dvd (a, b: LONGCARD) : LONGCARD;                      (* 0 ∣ b iff b = 0; 1 / 0 *)
+(* MathIR v3 builtins, Lean/Mathlib semantics (same algorithms as lm2_nat.h) *)
+PROCEDURE Fib (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;         (* fib 94 overflows *)
+PROCEDURE Log (b, n: LONGCARD) : LONGCARD;                      (* 0 if b <= 1 or n < b *)
+PROCEDURE Log2 (n: LONGCARD) : LONGCARD;                        (* Log(2, n) *)
+PROCEDURE PadicVal (p, n: LONGCARD) : LONGCARD;                 (* 0 if p <= 1 or n = 0 *)
+PROCEDURE BigOmega (n: LONGCARD) : LONGCARD;                    (* prime factors with multiplicity *)
+PROCEDURE DigSum (b, n: LONGCARD) : LONGCARD;                   (* sum of Nat.digits b n *)
+PROCEDURE DigLen (b, n: LONGCARD) : LONGCARD;                   (* length of Nat.digits b n *)
+PROCEDURE DigRev (b, n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* ofDigits b (digits b n).reverse *)
 END LM2Nat.

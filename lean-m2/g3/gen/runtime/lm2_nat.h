@@ -1,4 +1,4 @@
-/* LEAN-M2-CC-001 MathIR v1 runtime: checked operations on 64-bit unsigned integers with
+/* LEAN-M2-CC-001 MathIR runtime (v1 core, v2/v3 builtins): checked operations on 64-bit unsigned integers with
  * Lean ℕ semantics. Each returns 1 on overflow (result NOT written), 0 otherwise.
  *   sub truncates at 0 (ℕ subtraction)   div: x / 0 = 0   mod: x % 0 = x   pow: 0^0 = 1
  * Hand-written, fixed (not generated). Compiled only by CompCert. */
@@ -106,4 +106,64 @@ static uint64_t lm2_isprime(uint64_t n) {
 }
 /* a ∣ b on ℕ: 0 ∣ b iff b = 0 */
 static uint64_t lm2_dvd(uint64_t a, uint64_t b) { return a == 0u ? (b == 0u) : (b % a == 0u); }
+
+/* ---- MathIR v3 builtins (Lean / Mathlib semantics) ---- */
+/* Nat.fib: fib 0 = 0, fib 1 = 1; fib 93 < 2^64 <= fib 94 */
+static int lm2_fib(uint64_t n, uint64_t *r) {
+  uint64_t x = 0u, y = 1u, z, i;
+  if (n > 93u) return 1;
+  /* y may wrap on the last iteration when n = 93 (unsigned, well defined); x = fib n stays exact */
+  for (i = 0u; i < n; i++) { z = x + y; x = y; y = z; }
+  *r = x; return 0;
+}
+/* Nat.log b n: largest k with b^k <= n; 0 if b <= 1 or n < b */
+static uint64_t lm2_log(uint64_t b, uint64_t n) {
+  uint64_t k = 0u;
+  if (b <= 1u) return 0u;
+  while (n >= b) { n /= b; k++; }
+  return k;
+}
+/* Nat.log2 n: Nat.log 2 n (log2 0 = 0) */
+static uint64_t lm2_log2(uint64_t n) { return lm2_log(2u, n); }
+/* padicValNat p n: 0 if p <= 1 or n = 0, else the exponent of p in n */
+static uint64_t lm2_padic(uint64_t p, uint64_t n) {
+  uint64_t k = 0u;
+  if (p <= 1u || n == 0u) return 0u;
+  while (n % p == 0u) { n /= p; k++; }
+  return k;
+}
+/* Ω n = length of Nat.primeFactorsList n (with multiplicity); 0 for n <= 1 */
+static uint64_t lm2_bigomega(uint64_t n) {
+  uint64_t k = 0u, d;
+  if (n <= 1u) return 0u;
+  for (d = 2u; d <= n / d; d++) { while (n % d == 0u) { n /= d; k++; } }
+  if (n > 1u) k++;
+  return k;
+}
+/* Nat.digits b n: base 0 gives [n] (n > 0), base 1 gives n ones, base >= 2 little-endian digits */
+static uint64_t lm2_digsum(uint64_t b, uint64_t n) {
+  uint64_t s = 0u;
+  if (b <= 1u) return n;
+  while (n > 0u) { s += n % b; n /= b; }   /* digit sum <= n: no overflow */
+  return s;
+}
+static uint64_t lm2_diglen(uint64_t b, uint64_t n) {
+  uint64_t k = 0u;
+  if (b == 0u) return n == 0u ? 0u : 1u;
+  if (b == 1u) return n;
+  while (n > 0u) { n /= b; k++; }
+  return k;
+}
+/* Nat.ofDigits b (Nat.digits b n).reverse: digit reversal. Bases 0 and 1 give n.
+ * Partial results never exceed the final value, so an overflow here is a genuine overflow. */
+static int lm2_digrev(uint64_t b, uint64_t n, uint64_t *r) {
+  uint64_t acc = 0u, t;
+  if (b <= 1u) { *r = n; return 0; }
+  while (n > 0u) {
+    if (lm2_mul(acc, b, &t)) return 1;
+    if (lm2_add(t, n % b, &acc)) return 1;
+    n /= b;
+  }
+  *r = acc; return 0;
+}
 #endif

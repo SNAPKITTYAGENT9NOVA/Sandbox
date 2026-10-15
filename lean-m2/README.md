@@ -9,7 +9,7 @@ import resolution and declaration inventory (G1b/G2) and G3–G6 are **not imple
 
 [google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures)
 at commit `84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88` (Apache-2.0), Lean `v4.33.1`, Mathlib `v4.33.1`.
-See `corpus.lock.yaml` for the details and `corpus/formal-conjectures/84cf7f8/` for the inventory.
+See `corpus.lock.yaml` for the details. The inventory itself is regenerated rather than stored: `corpus/formal-conjectures/84cf7f8/EVIDENCE.sha256` pins its exact bytes, and CI fails if a regeneration differs.
 
 | Directory | `.lean` files | Role |
 |---|---|---|

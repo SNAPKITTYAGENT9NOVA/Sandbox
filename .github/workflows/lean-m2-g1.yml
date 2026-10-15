@@ -83,7 +83,10 @@ jobs:
           $A notice "G1 Lean: selftest and run" "$RUNNER_TEMP/a1.txt" 40
           [ -f "$EVID/compare.log" ] && $A notice "G1 differential" "$EVID/compare.log" 50
           [ -s "$EVID/lean-output.sha256" ] && $A notice "G1 Lean output sha256" "$EVID/lean-output.sha256" 10
-          grep -q 'exit=0' "$EVID/lean-g1.log" 2>/dev/null || $A error "G1 Lean run log" "$EVID/lean-g1.log" 60
+          if ! grep -q 'exit=0' "$EVID/lean-g1.log" 2>/dev/null; then
+            grep -n -E 'error:' "$EVID/lean-g1.log" | head -30 > "$RUNNER_TEMP/a2.txt" || true
+            $A error "G1 Lean compile/run errors (first 30)" "$RUNNER_TEMP/a2.txt" 30
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()

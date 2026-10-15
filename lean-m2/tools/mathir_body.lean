@@ -403,6 +403,75 @@ def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
 
 /-! ## Reference values -/
 
+/-! ## Budgeted IR interpreter (exact ℕ, aborts instead of exploding) -/
+
+/-- Limits: any intermediate above `2^maxBits`, or more than `maxSteps` loop iterations / calls
+in total, aborts the evaluation (`none`). Used to (1) decide which inputs are safe to evaluate
+with the corpus definition and (2) check extraction fidelity: on every evaluated input the IR must
+agree with Lean's compiled corpus definition. -/
+structure Budget where
+  maxBits  : Nat := 4096
+  steps    : Nat := 200000
+
+abbrev IRM := StateT Nat (Except String)   -- state: steps used; error = aborted
+
+def tick (b : Budget) : IRM Unit := do
+  let s ← get
+  if s ≥ b.steps then throw "step budget"
+  set (s + 1)
+
+def chk (b : Budget) (v : Nat) : IRM Nat :=
+  if v.log2 ≥ b.maxBits then throw "size budget" else pure v
+
+mutual
+partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat) (i acc : Nat) : E → IRM Nat
+  | .lit n => pure n
+  | .arg k => pure (args.getD k 0)
+  | .idx => pure i
+  | .acc => pure acc
+  | .bin op x y => do
+    let a ← evalE b defs args i acc x
+    let c ← evalE b defs args i acc y
+    match op with
+    | "add" => chk b (a + c)
+    | "mul" => chk b (a * c)
+    | "sub" => pure (a - c)
+    | "div" => pure (a / c)
+    | "mod" => pure (a % c)
+    | _ =>  -- pow: refuse before computing if the result would exceed the budget
+      if a ≤ 1 || c == 0 then pure (a ^ c)
+      else if c * (a.log2 + 1) > b.maxBits + 64 then throw "size budget"
+      else chk b (a ^ c)
+  | .ite k x y t e => do
+    let a ← evalE b defs args i acc x
+    let c ← evalE b defs args i acc y
+    let cond : Bool := match k with | "lt" => decide (a < c) | "le" => decide (a ≤ c) | _ => a == c
+    if cond then evalE b defs args i acc t else evalE b defs args i acc e
+  | .call f xs => do
+    tick b
+    let mut vs : Array Nat := #[]
+    for x in xs do vs := vs.push (← evalE b defs args i acc x)
+    let some d := defs.get? f | throw "unknown callee"
+    evalDef b defs d vs
+
+partial def evalDef (b : Budget) (defs : Std.HashMap Name FnDef) (d : FnDef) (vs : Array Nat) : IRM Nat := do
+  match d with
+  | .direct _ e => evalE b defs vs 0 0 e
+  | .primrec _ j base step =>
+    let mut a ← evalE b defs vs 0 0 base
+    for m in [0:vs.getD j 0] do
+      tick b
+      a ← evalE b defs vs m a step
+    return a
+end
+
+def runIR (defs : Std.HashMap Name FnDef) (n : Name) (xs : List Nat) : Option Nat :=
+  match defs.get? n with
+  | none => none
+  | some d => match (evalDef {} defs d xs.toArray).run 0 with
+    | .ok (v, _) => some v
+    | .error _ => none
+
 def u64Max : Nat := 2 ^ 64 - 1
 
 unsafe def evalN (env : Environment) (n : Name) (arity : Nat) (args : List Nat) : Except String Nat := do
@@ -463,6 +532,7 @@ set_option maxHeartbeats 0 in
   -- 2. extract
   let mut defs : Std.HashMap Name FnDef := {}
   let mut blocked : Array (Name × String) := #[]
+  (← IO.getStdout).putStrLn s!"MATHIR candidates={cands.size} (extracting)"; (← IO.getStdout).flush
   for (n, k) in cands do
     match ← (try extract n k catch e => do pure (.error s!"exception: {← e.toMessageData.toString}")) with
     | .ok d => defs := defs.insert n d
@@ -537,19 +607,35 @@ set_option maxHeartbeats 0 in
   let mut cFn := ""; let mut cA0 := ""; let mut cA1 := ""; let mut cA2 := ""; let mut cSt := ""; let mut cV := ""
   let mut ncases := 0; let mut nok := 0
   let mut evalFail : Array (Name × String) := #[]
+  let mut mismatch : Array (Name × List Nat × Nat × Nat) := #[]
+  let mut skipped := 0
+  let stdout ← IO.getStdout
   for h : i in [0:order.size] do
     let n := order[i]
     let d := defs.get! n
+    stdout.putStrLn s!"MATHIR eval {i + 1}/{order.size} {n}"; stdout.flush
     for xs in inputs d.arity (reach.getD n false) (0x5EED0000 + i.toUInt64) do
+      -- 1. budget gate: the IR evaluation must finish within size/step limits
+      let irv? := runIR defs n xs
+      if irv?.isNone then
+        skipped := skipped + 1
+        continue
+      let irv := irv?.getD 0
+      -- 2. exact reference from the corpus definition (Lean's compiled code)
       match unsafe evalN env n d.arity xs with
       | .error e => evalFail := evalFail.push (n, e); break
       | .ok v =>
+        -- 3. extraction fidelity: IR semantics must equal the corpus definition
+        if v != irv then mismatch := mismatch.push (n, xs, v, irv)
         let (st, val) := if v ≤ u64Max then (0, v) else (1, 0)
         let pad := xs ++ List.replicate (3 - xs.length) 0
         cFn := cFn ++ s!"{i}u,"; cA0 := cA0 ++ s!"{pad[0]!}ULL,"; cA1 := cA1 ++ s!"{pad[1]!}ULL,"
         cA2 := cA2 ++ s!"{pad[2]!}ULL,"; cSt := cSt ++ s!"{st},"; cV := cV ++ s!"{val}ULL,"
         ncases := ncases + 1
         if st == 0 then nok := nok + 1
+  unless mismatch.isEmpty do
+    let first := mismatch.toList.take 10 |>.map fun (n, xs, v, w) => s!"{n} {xs}: lean={v} ir={w}"
+    throwError m!"EXTRACTION FIDELITY FAILURE ({mismatch.size} mismatches): {first}"
   unless evalFail.isEmpty do throwError m!"reference evaluation failed: {evalFail.toList.map (·.1)}"
   IO.FS.writeFile (out "lm2_gen_cases.c") <|
     "/* Generated by mathir_body.lean: Lean-evaluated reference values. Do not edit. */\n#include <stdint.h>\n#include <stddef.h>\n" ++
@@ -582,8 +668,8 @@ set_option maxHeartbeats 0 in
       let k := (r.drop 13).toString
       consts := consts.insert k (consts.getD k 0 + 1)
   let topConsts := ((consts.toList.toArray.qsort (fun a b => a.2 > b.2)).toList.take 15).map fun (k, v) => s!"  {v}  {k}"
-  let report := s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok}\n" ++
+  let report := s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok} skipped_over_budget={skipped} ir_fidelity_mismatches=0\n" ++
     "translated:\n" ++ String.join (order.toList.map fun n => s!"  {n} ({(defs.get! n).arity}-ary{if isRec n then ", primrec" else ""})\n") ++
     "blocked reasons:\n" ++ "\n".intercalate histLines ++ "\ntop unsupported constants:\n" ++ "\n".intercalate topConsts ++ "\n"
   IO.FS.writeFile (out "report.txt") report
-  IO.println s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok}"
+  IO.println s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok} skipped_over_budget={skipped} ir_fidelity_mismatches=0"

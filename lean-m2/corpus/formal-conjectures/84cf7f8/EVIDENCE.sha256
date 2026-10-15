@@ -1,6 +1,7 @@
-# SHA-256 of the G1 inventory (schema 1.1.0) regenerated from google-deepmind/formal-conjectures @ 84cf7f8
-# by lean-m2/tools/g1_inventory.py. Files are not stored in git; CI regenerates them and fails if any hash differs.
-8256f180132af62e5e25b97a42f34dc9aa283a57426d70c8825517b100604f25  inventory.json
-ebefde6652dcd4359b189c50fa9c81d58eacbdf0527c250dfb1e2bf023b2827c  imports.json
-9830d9b3f6be32dadbfd4eb0a64c3de8ef8ed213c53d927e4228095ea3c95591  source-hashes.json
+# SHA-256 of the G1 inventory (schema 2.0.0) regenerated from google-deepmind/formal-conjectures @ 84cf7f8
+# by lean-m2/tools/G1Inventory.lean under Lean 4.33.1 (819816b). Observed in CI run 38678453308.
+# Files are not stored in git; CI regenerates them and fails if any hash differs.
+eaf2fe87ea979bd43eb3907e2a04d2909182e2468b8cda18398e7ef39321ac98  inventory.json
+86f71d90558112a99ad790edc98686a8f7729be23e944520fb8f71c706003b72  imports.json
+317666af55e0a5b6b1fa560a047e8e60b69417a5a8ad113bc90d211455cdb458  source-hashes.json
 66015949b2da0cb5f379f1ee5aec9e782e936da1e7f8360ec5f61bfe4a0709d9  source-tree.sha256

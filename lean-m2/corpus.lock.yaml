@@ -1,5 +1,5 @@
 # Corpus freeze for LEAN-M2-CC-001. Every value below was observed, not assumed.
-# Regenerate the inventory with: python3 -I lean-m2/tools/g1_inventory.py <clone> <out>
+# Regenerate the inventory with: (cd <clone> && lean --run <repo>/lean-m2/tools/G1Inventory.lean . <out>)
 corpus:
   schema_version: "0.1.0"
   repository: https://github.com/google-deepmind/formal-conjectures

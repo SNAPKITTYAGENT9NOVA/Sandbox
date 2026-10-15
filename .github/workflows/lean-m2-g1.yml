@@ -3,16 +3,15 @@ name: lean-m2 G1 (Lean-native inventory)
 # Fast job: needs only Lean core (no Mathlib build). Validates the Lean implementation of G1:
 #   1. SHA-256 against FIPS/NIST test vectors (--selftest),
 #   2. every file hash against sha256sum,
-#   3. semantic equality with the Python G1 implementation (while both exist).
+#   3. byte-for-byte equality with the pinned EVIDENCE.sha256.
+# (The Python implementation was retired after a semantic differential reported IDENTICAL, run 38678453308.)
 
 on:
   pull_request:
-    paths: ['lean-m2/tools/G1Inventory.lean', 'lean-m2/tools/compare_g1.py', 'lean-m2/tools/g1_inventory.py',
-            'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g1.yml']
+    paths: ['lean-m2/tools/G1Inventory.lean', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g1.yml']
   push:
     branches: [main]
-    paths: ['lean-m2/tools/G1Inventory.lean', 'lean-m2/tools/compare_g1.py', 'lean-m2/tools/g1_inventory.py',
-            'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g1.yml']
+    paths: ['lean-m2/tools/G1Inventory.lean', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g1.yml']
   workflow_dispatch:
 
 permissions:
@@ -66,10 +65,10 @@ jobs:
       - name: Every file hash vs sha256sum
         run: cd "$CORPUS" && sha256sum --quiet -c "$EVID/lean/source-tree.sha256" && echo "all hashes match sha256sum"
 
-      - name: Differential vs Python G1
+      - name: Regenerated inventory matches EVIDENCE.sha256 (fail closed)
         run: |
-          python3 -I lean-m2/tools/g1_inventory.py "$CORPUS" "$EVID/python" > /dev/null
-          python3 -I lean-m2/tools/compare_g1.py "$EVID/python" "$EVID/lean" | tee "$EVID/compare.log"
+          (cd "$EVID/lean" && grep -v '^#' "$GITHUB_WORKSPACE/lean-m2/corpus/formal-conjectures/84cf7f8/EVIDENCE.sha256" | sha256sum -c -) \
+            | tee "$EVID/compare.log"
 
       - name: Lean output hashes (for EVIDENCE.sha256)
         if: always()
@@ -81,7 +80,7 @@ jobs:
           A=lean-m2/scripts/annotate.sh
           { cat "$EVID/lean-version.txt" "$EVID/selftest.log" 2>/dev/null; tail -3 "$EVID/lean-g1.log" 2>/dev/null; } > "$RUNNER_TEMP/a1.txt"
           $A notice "G1 Lean: selftest and run" "$RUNNER_TEMP/a1.txt" 40
-          [ -f "$EVID/compare.log" ] && $A notice "G1 differential" "$EVID/compare.log" 50
+          [ -f "$EVID/compare.log" ] && $A notice "G1 evidence check" "$EVID/compare.log" 20
           [ -s "$EVID/lean-output.sha256" ] && $A notice "G1 Lean output sha256" "$EVID/lean-output.sha256" 10
           if ! grep -q 'exit=0' "$EVID/lean-g1.log" 2>/dev/null; then
             grep -n -E 'error:' "$EVID/lean-g1.log" | head -30 > "$RUNNER_TEMP/a2.txt" || true

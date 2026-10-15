@@ -11,7 +11,7 @@ provenance is kept. The target is AArch64 Linux.
 | Gate | What | State | Evidence |
 |---|---|---|---|
 | G0 | Toolchain probe: CompCert 3.18, gm2, Lean, linked ABI probe | **PASS** (toolchain-only), native AArch64 | CI `lean-m2 workstation (G0)` |
-| G1 | Corpus inventory: hashes, Lean headers, import graph, Lake targets | **PASS** (Python tool). The Lean-native tool is in validation | `lean-m2/corpus.lock.yaml`, `EVIDENCE.sha256` |
+| G1 | Corpus inventory: hashes, Lean headers, import graph, Lake targets | **PASS**, Lean-native tool | `lean-m2/corpus.lock.yaml`, `EVIDENCE.sha256` |
 | G2 | `lake build` + Lean-native declaration and axiom ledger | **PASS**: 17,232 constants; 12,390 `LEAN_VERIFIED`, 4,842 `BLOCKED` | `lean-m2/corpus/formal-conjectures/84cf7f8/g2-headline.json` |
 | G3 | Extraction of eligible definitions to a C subset | started: candidate shortlist only | CI `lean-m2 G2` annotations |
 | G4–G6 | CompCert build, Modula-2 generation, differential testing and release | not started | |
@@ -33,7 +33,7 @@ lean-m2/
   corpus/…/84cf7f8/       EVIDENCE.sha256 (pins regenerated inventory), g2-headline.json
   docker/                 AArch64 toolchain image
   scripts/                G0 probe, CI annotation helper
-  tools/                  G1 inventory (Lean, plus Python until retired), G2 ledger (Lean), summarizer
+  tools/                  G1 inventory (Lean), G2 ledger (Lean), G2 summarizer (Python glue)
   fixtures/abi/           CompCert-C <-> gm2 ABI probe
   workstation/            Windows (PowerShell) and Linux/macOS launchers
 .github/workflows/        lean-m2-workstation (G0, ARM), lean-m2-g1, lean-m2-g2

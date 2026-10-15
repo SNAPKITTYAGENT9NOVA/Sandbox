@@ -1,0 +1,145 @@
+name: lean-m2 SLICE-001 (firstKindTerm end-to-end)
+
+# LEAN-M2-CC-001 first vertical slice: CunninghamChain.firstKindTerm
+#   job lean (x86-64): elaborate Spec.lean against the frozen corpus -> proofs + axioms + reference vectors
+#   job arm  (native AArch64): CompCert C + native Modula-2 + C binding, linked, differential test vs Lean
+# Fail-closed; evidence published as annotations and artifacts.
+
+on:
+  pull_request:
+    paths: ['lean-m2/g3/slice001/**', 'lean-m2/docker/**', 'lean-m2/scripts/annotate.sh', '.github/workflows/lean-m2-slice001.yml']
+  push:
+    branches: [main]
+    paths: ['lean-m2/g3/slice001/**', 'lean-m2/docker/**', 'lean-m2/scripts/annotate.sh', '.github/workflows/lean-m2-slice001.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-m2-slice001-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CORPUS: ${{ github.workspace }}/corpus
+      EVID: ${{ github.workspace }}/evidence
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - name: Fetch corpus at the locked commit
+        run: |
+          COMMIT=$(awk '/^  commit:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          REPO=$(awk '/^  repository:/{print $2; exit}' lean-m2/corpus.lock.yaml)
+          echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"
+          git init -q "$CORPUS"
+          git -C "$CORPUS" fetch -q --depth 1 "$REPO" "$COMMIT"
+          git -C "$CORPUS" checkout -q FETCH_HEAD
+          test "$(git -C "$CORPUS" rev-parse HEAD)" = "$COMMIT"
+          mkdir -p "$EVID"
+          # the slice's source file must be the one the contract names
+          echo "64ba20bf6ffa5aaf9fe300922a7b6591cca280a8ff8b05d62a6f04c3c69988e2  $CORPUS/FormalConjectures/Arxiv/1104.1579/CunninghamChain.lean" | sha256sum -c -
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore corpus build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: corpus/.lake/build
+          key: fc-build-${{ env.COMMIT }}-v1
+
+      - name: Mathlib cache and the slice module
+        working-directory: corpus
+        run: |
+          lake exe cache get 2>&1 | tail -3
+          lake build 'FormalConjectures.Arxiv.«1104.1579».CunninghamChain' 2>&1 | tail -5
+
+      - name: Elaborate Spec.lean (proofs, axioms, reference vectors)
+        working-directory: corpus
+        run: |
+          set +e
+          SLICE_OUT="$EVID/vectors" lake env lean "$GITHUB_WORKSPACE/lean-m2/g3/slice001/Spec.lean" > "$EVID/spec.log" 2>&1
+          rc=$?; set -e
+          cat "$EVID/spec.log"
+          echo "spec exit=$rc"
+          test $rc -eq 0
+          # NB: commands negated with `!` never trip `set -e`; use explicit checks.
+          if grep -q 'error' "$EVID/spec.log"; then echo "BLOCKED: errors in Spec.lean"; exit 1; fi
+          # every proved fact may depend only on the standard axioms (no sorryAx, no native)
+          bad=$(grep -E "depends on axioms" "$EVID/spec.log" \
+                | grep -v -E "axioms: \[(propext|Classical\.choice|Quot\.sound)(, (propext|Classical\.choice|Quot\.sound))*\]" || true)
+          if [ -n "$bad" ]; then echo "BLOCKED: non-standard axioms:"; echo "$bad"; exit 1; fi
+          n=$(grep -c -E "depends on axioms|does not depend on any axioms" "$EVID/spec.log" || true)
+          if [ "$n" -ne 6 ]; then echo "BLOCKED: expected 6 axiom reports, got $n"; exit 1; fi
+          grep -q '^SLICE001 cases=' "$EVID/spec.log"
+          (cd "$EVID/vectors" && sha256sum lm2_cases.c reference.jsonl) | tee "$EVID/vectors.sha256"
+
+      - name: Publish evidence as annotations
+        if: always()
+        run: |
+          grep -E "axioms|SLICE001|error|does not depend" "$EVID/spec.log" > "$RUNNER_TEMP/a.txt" 2>/dev/null || true
+          cat "$EVID/vectors.sha256" >> "$RUNNER_TEMP/a.txt" 2>/dev/null || true
+          lean-m2/scripts/annotate.sh notice "SLICE001 Lean: axioms and vectors" "$RUNNER_TEMP/a.txt" 30
+          grep -q '^SLICE001 cases=' "$EVID/spec.log" 2>/dev/null || lean-m2/scripts/annotate.sh error "SLICE001 Spec.lean log" "$EVID/spec.log" 60
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: slice001-lean
+          path: evidence/
+
+  arm:
+    needs: lean
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: slice001-lean
+          path: lean-evidence
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build toolchain image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: lean-m2
+          file: lean-m2/docker/Dockerfile
+          platforms: linux/arm64
+          load: true
+          tags: lean-m2-workstation:slice001
+          cache-from: type=gha,scope=lean-m2
+          cache-to: type=gha,scope=lean-m2,mode=max
+
+      - name: CompCert + gm2 build and differential test (native AArch64)
+        run: |
+          mkdir -p out
+          # the vectors must be exactly the ones the lean job produced
+          (cd lean-evidence/vectors && sha256sum -c ../vectors.sha256)
+          docker run --rm --platform linux/arm64 -u "$(id -u):$(id -g)" \
+            -v "$PWD/lean-m2/g3/slice001:/slice:ro" -v "$PWD/lean-evidence/vectors:/vec:ro" -v "$PWD/out:/out" \
+            lean-m2-workstation:slice001 \
+            bash /slice/run.sh /slice /vec/lm2_cases.c /out
+
+      - name: Publish evidence as annotations
+        if: always()
+        run: |
+          lean-m2/scripts/annotate.sh notice "SLICE001 ARM build and test" out/build.log 70
+          grep -q 'DIFFERENTIAL: PASS' out/test.log 2>/dev/null || lean-m2/scripts/annotate.sh error "SLICE001 ARM failure" out/build.log 60
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: slice001-arm
+          path: out/

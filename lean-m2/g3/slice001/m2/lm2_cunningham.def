@@ -1,0 +1,9 @@
+DEFINITION MODULE FOR "C" lm2_cunningham;
+(* Binding to the CompCert-compiled C implementation (c/lm2_cunningham.c).
+   EXPORT UNQUALIFIED is required for bare C symbol names (ABI rule found in G0). *)
+FROM SYSTEM IMPORT ADDRESS;
+EXPORT UNQUALIFIED lm2_cunningham_first_kind_term;
+
+PROCEDURE lm2_cunningham_first_kind_term (p, n: LONGCARD; out: ADDRESS) : INTEGER;
+
+END lm2_cunningham.

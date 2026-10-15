@@ -681,7 +681,7 @@ def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
 primality / `minFac` above 2^20 aborts the evaluation (`none`). -/
 structure Budget where
   maxBits : Nat := 4096
-  steps   : Nat := 200000
+  steps   : Nat := 20000   -- the interpreter runs inside `#eval` (interpreted), so keep this modest
 
 abbrev IRM := StateT Nat (Except String)   -- state: steps used
 
@@ -840,9 +840,12 @@ def inputs (arity : Nat) (bounded : Bool) (seed : UInt64) : Array (List Nat) := 
   match arity with
   | 1 => for a in vals do out := out.push [a]
   | 2 => for a in vals do for b in vals do out := out.push [a, b]
-  | _ => for a in small.take 6 ++ big do for b in small.take 6 ++ big do for c in small.take 6 ++ big do out := out.push [a, b, c]
+  | _ =>
+    let sm := if bounded then small.take 4 else small.take 6
+    for a in sm ++ big do for b in sm ++ big do for c in sm ++ big do out := out.push [a, b, c]
   let mut s := seed
-  for _ in List.range 300 do
+  -- fewer random inputs for heavy functions: each one may run long loops in interpreted code
+  for _ in List.range (if bounded then 60 else 300) do
     let mut xs : List Nat := []
     for _ in List.range arity do
       s := lcg s

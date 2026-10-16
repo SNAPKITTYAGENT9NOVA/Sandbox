@@ -22,19 +22,20 @@ run ccomp -c "$G/lm2_gen_cases.c" -o "$OUT/lm2_gen_cases.o"
 
 log "== gm2: runtime + generated native Modula-2"
 run gm2 -fiso -I"$R" -I"$G" -c "$R/LM2Nat.mod" -o "$OUT/LM2Nat.o"
+run gm2 -fiso -I"$R" -I"$G" -c "$R/LM2Wide.mod" -o "$OUT/LM2Wide.o"
 run gm2 -fiso -I"$R" -I"$G" -c "$G/LM2Gen.mod" -o "$OUT/LM2Gen.o"
-run gm2 -fiso -I"$R" -I"$G" "$R/GenTest.mod" "$OUT/LM2Gen.o" "$OUT/LM2Nat.o" "$OUT/lm2_gen.o" "$OUT/lm2_gen_cases.o" -o "$OUT/gen-test"
+run gm2 -fiso -I"$R" -I"$G" "$R/GenTest.mod" "$OUT/LM2Gen.o" "$OUT/LM2Wide.o" "$OUT/LM2Nat.o" "$OUT/lm2_gen.o" "$OUT/lm2_gen_cases.o" -o "$OUT/gen-test"
 
 log "== acceptance build: SLICE-001 driver against the generated firstKindTerm"
 run ccomp -I"$G" -c "$A/lm2_cunningham_adapter.c" -o "$OUT/adapter.o"
 run ccomp -c "$V/lm2_cases.c" -o "$OUT/slice001_cases.o"
 run gm2 -fiso -I"$A" -I"$G" -I"$R" -c "$A/CunninghamChain.mod" -o "$OUT/CunninghamChainAdapter.o"
 run gm2 -fiso -I"$A" -I"$S/m2" -I"$G" -I"$R" "$S/m2/Slice001Test.mod" \
-    "$OUT/CunninghamChainAdapter.o" "$OUT/LM2Gen.o" "$OUT/LM2Nat.o" "$OUT/lm2_gen.o" "$OUT/adapter.o" "$OUT/slice001_cases.o" \
+    "$OUT/CunninghamChainAdapter.o" "$OUT/LM2Gen.o" "$OUT/LM2Wide.o" "$OUT/LM2Nat.o" "$OUT/lm2_gen.o" "$OUT/adapter.o" "$OUT/slice001_cases.o" \
     -o "$OUT/acceptance-test"
 
 log "== object checks"
-for o in lm2_gen.o lm2_gen_cases.o LM2Nat.o LM2Gen.o gen-test acceptance-test; do
+for o in lm2_gen.o lm2_gen_cases.o LM2Nat.o LM2Wide.o LM2Gen.o gen-test acceptance-test; do
   m=$(readelf -h "$OUT/$o" | awk -F: '/Machine:/{gsub(/^ +/,"",$2); print $2}')
   log "$o machine=$m sha256=$(sha256sum "$OUT/$o" | cut -d' ' -f1)"
   [ "$m" = AArch64 ] || { log "BLOCKED: $o is not AArch64"; exit 1; }

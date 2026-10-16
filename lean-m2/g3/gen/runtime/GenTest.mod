@@ -19,12 +19,15 @@ IMPORT LM2Gen;
 
 CONST
   Sentinel = 0DEADBEEFCAFEF00DH;
+  MaxFn = 1023;   (* per-function incompleteness counters *)
 
 VAR
   i, count, fn: CARDINAL;
   a0, a1, a2, ev, cv, mv: LONGCARD;
   est, cst, mst: INTEGER;
   refOk, refOv, unsoundC, unsoundM, incompC, incompM: CARDINAL;
+  ic0, im0: CARDINAL;
+  perC, perM, perCases: ARRAY [0..MaxFn] OF CARDINAL;
 
 PROCEDURE Classify (est: INTEGER; ev: LONGCARD; st: INTEGER; v: LONGCARD;
                     VAR unsound, incomplete: CARDINAL) : BOOLEAN;
@@ -52,12 +55,16 @@ BEGIN
   count := lm2_gen_case_count();
   refOk := 0; refOv := 0; unsoundC := 0; unsoundM := 0; incompC := 0; incompM := 0;
   i := 0;
+  WHILE i <= MaxFn DO perC[i] := 0; perM[i] := 0; perCases[i] := 0; INC(i) END;
+  IF lm2_gen_count() > MaxFn THEN printf("FAIL more than %u functions\n", MaxFn); exit(2) END;
+  i := 0;
   WHILE i < count DO
     IF lm2_gen_case_get(i, ADR(fn), ADR(a0), ADR(a1), ADR(a2), ADR(est), ADR(ev)) # 0 THEN
       printf("FAIL reading case %u\n", i); exit(2)
     END;
     IF est = 0 THEN INC(refOk) ELSE INC(refOv) END;
     cv := Sentinel; mv := Sentinel;
+    ic0 := incompC; im0 := incompM;
     cst := lm2_gen_call(fn, a0, a1, a2, ADR(cv));
     mst := LM2Gen.Call(fn, a0, a1, a2, mv);
     IF Classify(est, ev, cst, cv, unsoundC, incompC) AND (unsoundC <= 20) THEN
@@ -65,6 +72,19 @@ BEGIN
     END;
     IF Classify(est, ev, mst, mv, unsoundM, incompM) AND (unsoundM <= 20) THEN
       printf("UNSOUND M2 case %u fn %u: status %d expected %d\n", i, fn, mst, est)
+    END;
+    IF fn <= MaxFn THEN
+      INC(perCases[fn]);
+      IF incompC # ic0 THEN INC(perC[fn]) END;
+      IF incompM # im0 THEN INC(perM[fn]) END
+    END;
+    INC(i)
+  END;
+  (* per-function incompleteness: fn index = position in the report's "translated" list *)
+  i := 0;
+  WHILE i <= MaxFn DO
+    IF (perC[i] # 0) OR (perM[i] # 0) THEN
+      printf("MATHIR INCOMPLETE fn=%u cases=%u C=%u M2=%u\n", i, perCases[i], perC[i], perM[i])
     END;
     INC(i)
   END;

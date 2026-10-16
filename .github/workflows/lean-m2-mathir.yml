@@ -190,8 +190,10 @@ jobs:
         if: always()
         run: |
           A=lean-m2/scripts/annotate.sh
-          { grep -E 'MATHIR|SLICE001|exit=|machine=' out/build.log || true; } > "$RUNNER_TEMP/r.txt"
+          { grep -E 'MATHIR|SLICE001|exit=|machine=' out/build.log | grep -v 'MATHIR INCOMPLETE' || true; } > "$RUNNER_TEMP/r.txt"
           $A notice "MathIR ARM results" "$RUNNER_TEMP/r.txt" 40
+          { grep 'MATHIR INCOMPLETE' out/build.log || true; } > "$RUNNER_TEMP/inc.txt"
+          [ -s "$RUNNER_TEMP/inc.txt" ] && $A notice "MathIR incomplete by function" "$RUNNER_TEMP/inc.txt" 400
           if ! grep -q 'DIFFERENTIAL: PASS' out/gen-test.log 2>/dev/null || ! grep -q 'DIFFERENTIAL: PASS' out/acceptance.log 2>/dev/null; then
             grep -n -E 'error|Error|BLOCKED|UNSOUND|FAIL' out/build.log | head -40 > "$RUNNER_TEMP/e.txt" || true
             $A error "MathIR ARM failures (first 40)" "$RUNNER_TEMP/e.txt" 40

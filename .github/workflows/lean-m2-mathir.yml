@@ -132,6 +132,7 @@ jobs:
         run: |
           A=lean-m2/scripts/annotate.sh
           [ -f "$EVID/gen/report.txt" ] && $A notice "MathIR report" "$EVID/gen/report.txt" 200
+          [ -f "$EVID/gen/blocked.txt" ] && $A notice "MathIR blocked" "$EVID/gen/blocked.txt" 300
           if [ -f "$EVID/gen/progress.log" ]; then
             { grep -E 'candidates=|done' "$EVID/gen/progress.log"; echo '--- slowest steps ---';
               awk '{t=$1+0; if (NR>1) print t-p, prev; p=t; prev=$0}' "$EVID/gen/progress.log" | sort -rn | head -12; } > "$RUNNER_TEMP/p.txt"

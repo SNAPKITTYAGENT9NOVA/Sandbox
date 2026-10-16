@@ -156,4 +156,94 @@ BEGIN
   IF b MOD a = 0 THEN RETURN 1 ELSE RETURN 0 END
 END Dvd;
 
+PROCEDURE Fib (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+VAR
+  x, y, z, i: LONGCARD;
+BEGIN
+  IF n > 93 THEN RETURN TRUE END;
+  x := 0; y := 1; i := 0;
+  WHILE i < n DO
+    (* y = fib(i+2) would exceed MAX(LONGCARD) only on the last step for n = 93: skip it there *)
+    IF i + 1 < n THEN z := x + y ELSE z := 0 END;
+    x := y; y := z; INC(i)
+  END;
+  r := x; RETURN FALSE
+END Fib;
+
+PROCEDURE Log (b, n: LONGCARD) : LONGCARD;
+VAR
+  k, m: LONGCARD;
+BEGIN
+  IF b <= 1 THEN RETURN 0 END;
+  k := 0; m := n;
+  WHILE m >= b DO m := m DIV b; INC(k) END;
+  RETURN k
+END Log;
+
+PROCEDURE Log2 (n: LONGCARD) : LONGCARD;
+BEGIN
+  RETURN Log(2, n)
+END Log2;
+
+PROCEDURE PadicVal (p, n: LONGCARD) : LONGCARD;
+VAR
+  k, m: LONGCARD;
+BEGIN
+  IF (p <= 1) OR (n = 0) THEN RETURN 0 END;
+  k := 0; m := n;
+  WHILE m MOD p = 0 DO m := m DIV p; INC(k) END;
+  RETURN k
+END PadicVal;
+
+PROCEDURE BigOmega (n: LONGCARD) : LONGCARD;
+VAR
+  k, m, d: LONGCARD;
+BEGIN
+  IF n <= 1 THEN RETURN 0 END;
+  k := 0; m := n; d := 2;
+  WHILE d <= m DIV d DO
+    WHILE m MOD d = 0 DO m := m DIV d; INC(k) END;
+    INC(d)
+  END;
+  IF m > 1 THEN INC(k) END;
+  RETURN k
+END BigOmega;
+
+PROCEDURE DigSum (b, n: LONGCARD) : LONGCARD;
+VAR
+  s, m: LONGCARD;
+BEGIN
+  IF b <= 1 THEN RETURN n END;
+  s := 0; m := n;
+  WHILE m > 0 DO s := s + m MOD b; m := m DIV b END;
+  RETURN s
+END DigSum;
+
+PROCEDURE DigLen (b, n: LONGCARD) : LONGCARD;
+VAR
+  k, m: LONGCARD;
+BEGIN
+  IF b = 0 THEN
+    IF n = 0 THEN RETURN 0 ELSE RETURN 1 END
+  END;
+  IF b = 1 THEN RETURN n END;
+  k := 0; m := n;
+  WHILE m > 0 DO m := m DIV b; INC(k) END;
+  RETURN k
+END DigLen;
+
+PROCEDURE DigRev (b, n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+VAR
+  acc, t, m: LONGCARD;
+BEGIN
+  IF b <= 1 THEN r := n; RETURN FALSE END;
+  acc := 0; m := n;
+  WHILE m > 0 DO
+    IF Mul(acc, b, t) THEN RETURN TRUE END;
+    IF Add(t, m MOD b, acc) THEN RETURN TRUE END;
+    m := m DIV b
+  END;
+  r := acc; RETURN FALSE
+END DigRev;
+
 END LM2Nat.

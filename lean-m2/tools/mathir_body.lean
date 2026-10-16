@@ -381,8 +381,8 @@ partial def trI (c : Ctx) (e : Expr) : TrM E := do
   -- if-then-else
   if fn == ``ite && args.size == 5 && isIntTy args[0]! then
     return .ite (← trProp c args[1]!) (← trI c args[3]!) (← trI c args[4]!)
-  -- ∑ / ∏ of ℤ over a ℕ source
-  if (fn == `Finset.sum || fn == `Finset.prod) && args.size == 5 && isIntTy args[0]! && isNatTy args[1]! then
+  -- ∑ / ∏ of ℤ over a ℕ source (`Finset.sum {ι M} [AddCommMonoid M] s f`: index type first)
+  if (fn == `Finset.sum || fn == `Finset.prod) && args.size == 5 && isNatTy args[0]! && isIntTy args[1]! then
     let id ← fresh c
     let (lo, hi, incl, filt) ← source c id args[3]!
     let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>

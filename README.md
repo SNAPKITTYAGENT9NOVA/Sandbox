@@ -13,12 +13,12 @@ provenance is kept. The target is AArch64 Linux.
 | G0 | Toolchain probe: CompCert 3.18, gm2, Lean, linked ABI probe | **PASS** (toolchain-only), native AArch64 | CI `lean-m2 workstation (G0)` |
 | G1 | Corpus inventory: hashes, Lean headers, import graph, Lake targets | **PASS**, Lean-native tool | `lean-m2/corpus.lock.yaml`, `EVIDENCE.sha256` |
 | G2 | `lake build` + Lean-native declaration and axiom ledger | **PASS**: 17,232 constants; 12,390 `LEAN_VERIFIED`, 4,842 `BLOCKED` | `lean-m2/corpus/formal-conjectures/84cf7f8/g2-headline.json` |
-| G3–G6 | Extraction → CompCert → Modula-2 → differential test | **MathIR v3 generator PASS**: 131 of 246 `ℕᵏ→ℕ` definitions generated as CompCert C + native Modula-2 (loops, range and divisor sums/products/counts/maxima, predicates, number-theory and digit builtins, `let`, lookback recursion); 0 unsound in 14,939 cases; SLICE-001 acceptance passes on generated code. Release gate not built | `lean-m2/g3/gen/LEDGER.json` |
+| G3–G6 | Extraction → CompCert → Modula-2 → differential test | **MathIR v4 generator PASS**: 140 of 246 `ℕᵏ→ℕ` definitions generated as CompCert C + native Modula-2 (loops, range and divisor sums/products/counts/maxima, predicates, number-theory and digit builtins, checked ℤ subterms, `let`, lookback recursion); 0 unsound in 15,223 cases; SLICE-001 acceptance passes on generated code. Release gate not built | `lean-m2/g3/gen/LEDGER.json` |
 
 **Corpus:** [google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures)
 @ `84cf7f8` (1,777 `.lean` files, Lean 4.33.1, Mathlib v4.33.1).
 
-**The Modula-2 library has 131 generated functions so far** (MathIR v3), plus the hand-written SLICE-001. The rest is the pipeline.
+**The Modula-2 library has 140 generated functions so far** (MathIR v4), plus the hand-written SLICE-001. The rest is the pipeline.
 `LEAN_VERIFIED` means Lean's kernel accepted the declaration using only `propext`,
 `Classical.choice` and `Quot.sound`. It says nothing about any translation.
 

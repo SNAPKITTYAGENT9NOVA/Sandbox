@@ -49,15 +49,16 @@ inductive E where
   | idx                                  -- recursion counter m (step only)
   | prev (j : Nat)                       -- f … (m + j) …  (step only, j < K)
   | lvar (id : Nat)                      -- loop variable
-  | bin  (op : String) (a b : E)         -- add mul sub div mod pow
+  | bin  (op : String) (a b : E)         -- add mul sub div mod pow | ℤ: iadd isub imul ipow (exponent ℕ)
   | prim (op : String) (args : List E)   -- min max gcd lcm fact choose sqrt minfac fib log log2 padic
                                          -- bigomega digsum diglen digrev | dvd prime (boolean)
-  | cmp  (k : String) (a b : E)          -- lt le eq (boolean)
+                                         -- ℕ→ℤ: ofnat | ℤ→ℤ: ineg isign | ℤ→ℕ: tonat natabs
+  | cmp  (k : String) (a b : E)          -- lt le eq | ℤ operands: ilt ile ieq (boolean)
   | and  (a b : E)
   | or   (a b : E)
   | not  (a : E)
   | ite  (c t e : E)                     -- c is boolean
-  | fold (op : String) (id : Nat) (lo hi : E) (incl : Bool) (filt : E) (body : E)  -- sum prod count max
+  | fold (op : String) (id : Nat) (lo hi : E) (incl : Bool) (filt : E) (body : E)  -- sum prod count max | ℤ body: isum iprod
   | call (fn : Name) (args : List E)
 
 instance : Inhabited E := ⟨.lit 0⟩
@@ -93,7 +94,7 @@ partial def E.calls (e : E) : List Name :=
 /-- Anything whose reference evaluation may be costly: pow, loops, heavy builtins. -/
 partial def E.heavy (e : E) : Bool :=
   (match e with
-   | .bin "pow" _ _ | .fold .. => true
+   | .bin "pow" _ _ | .bin "ipow" _ _ | .fold .. => true
    | .prim op _ => op ∈ ["fact", "choose", "minfac", "prime", "lcm", "fib", "bigomega"]
    | _ => false) || e.children.any E.heavy
 
@@ -116,6 +117,7 @@ def FnDef.heavy (d : FnDef) : Bool := (match d with | .recur .. => true | _ => f
 /-! ## Reading Lean expressions -/
 
 def isNatTy (e : Expr) : Bool := e.isConstOf ``Nat
+def isIntTy (e : Expr) : Bool := e.isConstOf ``Int
 
 /-- ℕ numeral: raw literal, `OfNat.ofNat ℕ n _`, or `Nat.zero`. -/
 def natLit? (e : Expr) : Option Nat :=
@@ -149,6 +151,9 @@ partial def offsetPattern? (e : Expr) : Option (Expr × Nat) :=
     | some ("add", x, y) => match natLit? y with
       | some k => (offsetPattern? x).map fun (m, j) => (m, j + k)
       | none => none
+    | some ("sub", x, y) => match natLit? y, offsetPattern? x with
+      | some k, some (m, j) => if j ≥ k then some (m, j - k) else none
+      | _, _ => none
     | _ => none
 
 /-- Context for translating one right-hand side. -/
@@ -160,6 +165,7 @@ structure Ctx where
   K      : Nat := 0               -- lookback depth (step only)
   loops  : Array (Expr × Nat) := #[]   -- loop-variable fvars and their ids
   ctr    : IO.Ref Nat             -- fresh loop ids
+  depth  : Nat := 0               -- inlining depth of ℤ-valued helpers
 
 abbrev TrM := ExceptT String MetaM
 
@@ -177,6 +183,7 @@ mutual
 partial def tr (c : Ctx) (e : Expr) : TrM E := do
   let e := e.consumeMData
   if let .letE _ _ v b _ := e then return ← tr c (b.instantiate1 v)
+  if e.isApp && e.getAppFn.isLambda then return ← tr c e.headBeta   -- local `let f := fun …` applied
   if let some n := natLit? e then return .lit n
   if e.isFVar then
     -- the recursion counter m is recognised BEFORE argument lookup (in the step, args[j] is m)
@@ -197,6 +204,9 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if fn == `Nat.factorial && args.size == 1 then return .prim "fact" [← tr c args[0]!]
   if fn == `Nat.sqrt && args.size == 1 then return .prim "sqrt" [← tr c args[0]!]
   if fn == `Nat.minFac && args.size == 1 then return .prim "minfac" [← tr c args[0]!]
+  -- ℤ → ℕ
+  if fn == ``Int.toNat && args.size == 1 then return .prim "tonat" [← trI c args[0]!]
+  if fn == ``Int.natAbs && args.size == 1 then return .prim "natabs" [← trI c args[0]!]
   -- MathIR v3 builtins (exact semantics re-checked against the compiled corpus by the fidelity check)
   if fn == ``id && args.size == 2 then return ← tr c args[1]!
   if fn == `Nat.fib && args.size == 1 then return .prim "fib" [← tr c args[0]!]
@@ -301,16 +311,35 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
 /-- Translate a decidable proposition to a boolean (0 / 1) expression. -/
 partial def trProp (c : Ctx) (p : Expr) : TrM E := do
   let p := p.consumeMData
+  if p.isApp && p.getAppFn.isLambda then return ← trProp c p.headBeta   -- local `let f := fun …` applied
   if p.isConstOf ``True then return .lit 1
   if p.isConstOf ``False then return .lit 0
   let (fn, args) := p.getAppFnArgs
   match fn, args with
-  | ``LT.lt, #[ty, _, a, b] => if isNatTy ty then return .cmp "lt" (← tr c a) (← tr c b) else bail "comparison at a non-ℕ type"
-  | ``LE.le, #[ty, _, a, b] => if isNatTy ty then return .cmp "le" (← tr c a) (← tr c b) else bail "comparison at a non-ℕ type"
-  | ``GT.gt, #[ty, _, a, b] => if isNatTy ty then return .cmp "lt" (← tr c b) (← tr c a) else bail "comparison at a non-ℕ type"
-  | ``GE.ge, #[ty, _, a, b] => if isNatTy ty then return .cmp "le" (← tr c b) (← tr c a) else bail "comparison at a non-ℕ type"
-  | ``Eq, #[ty, a, b] => if isNatTy ty then return .cmp "eq" (← tr c a) (← tr c b) else bail "equality at a non-ℕ type"
-  | ``Ne, #[ty, a, b] => if isNatTy ty then return .not (.cmp "eq" (← tr c a) (← tr c b)) else bail "≠ at a non-ℕ type"
+  | ``LT.lt, #[ty, _, a, b] =>
+    if isNatTy ty then return .cmp "lt" (← tr c a) (← tr c b)
+    else if isIntTy ty then return .cmp "ilt" (← trI c a) (← trI c b)
+    else bail "comparison at a non-ℕ type"
+  | ``LE.le, #[ty, _, a, b] =>
+    if isNatTy ty then return .cmp "le" (← tr c a) (← tr c b)
+    else if isIntTy ty then return .cmp "ile" (← trI c a) (← trI c b)
+    else bail "comparison at a non-ℕ type"
+  | ``GT.gt, #[ty, _, a, b] =>
+    if isNatTy ty then return .cmp "lt" (← tr c b) (← tr c a)
+    else if isIntTy ty then return .cmp "ilt" (← trI c b) (← trI c a)
+    else bail "comparison at a non-ℕ type"
+  | ``GE.ge, #[ty, _, a, b] =>
+    if isNatTy ty then return .cmp "le" (← tr c b) (← tr c a)
+    else if isIntTy ty then return .cmp "ile" (← trI c b) (← trI c a)
+    else bail "comparison at a non-ℕ type"
+  | ``Eq, #[ty, a, b] =>
+    if isNatTy ty then return .cmp "eq" (← tr c a) (← tr c b)
+    else if isIntTy ty then return .cmp "ieq" (← trI c a) (← trI c b)
+    else bail "equality at a non-ℕ type"
+  | ``Ne, #[ty, a, b] =>
+    if isNatTy ty then return .not (.cmp "eq" (← tr c a) (← tr c b))
+    else if isIntTy ty then return .not (.cmp "ieq" (← trI c a) (← trI c b))
+    else bail "≠ at a non-ℕ type"
   | ``Not, #[q] => return .not (← trProp c q)
   | ``And, #[q, r] => return .and (← trProp c q) (← trProp c r)
   | ``Or, #[q, r] => return .or (← trProp c q) (← trProp c r)
@@ -320,6 +349,57 @@ partial def trProp (c : Ctx) (p : Expr) : TrM E := do
   | `Even, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 0) else bail "Even at a non-ℕ type"
   | `Odd, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 1) else bail "Odd at a non-ℕ type"
   | _, _ => bail s!"unsupported predicate: {fn}"
+
+/-- Translate a ℤ-valued expression (ℤ subterms enter from ℕ via casts / literals and leave via
+`toNat`, `natAbs` or a comparison). -/
+partial def trI (c : Ctx) (e : Expr) : TrM E := do
+  let e := e.consumeMData
+  if let .letE _ _ v b _ := e then return ← trI c (b.instantiate1 v)
+  if e.isApp && e.getAppFn.isLambda then return ← trI c e.headBeta   -- local `let f := fun …` applied
+  let (fn, args) := e.getAppFnArgs
+  -- literals and casts ℕ → ℤ
+  if fn == ``OfNat.ofNat && args.size == 3 && isIntTy args[0]! then
+    match args[1]!.consumeMData with
+    | .lit (.natVal k) => return .prim "ofnat" [.lit k]
+    | _ => bail "ℤ literal"
+  if fn == ``Int.ofNat && args.size == 1 then return .prim "ofnat" [← tr c args[0]!]
+  if (fn == ``Nat.cast || fn == ``NatCast.natCast) && args.size == 3 && isIntTy args[0]! then
+    return .prim "ofnat" [← tr c args[2]!]
+  if fn == ``Neg.neg && args.size == 3 && isIntTy args[0]! then return .prim "ineg" [← trI c args[2]!]
+  if fn == ``Int.neg && args.size == 1 then return .prim "ineg" [← trI c args[0]!]
+  if fn == ``Int.sign && args.size == 1 then return .prim "isign" [← trI c args[0]!]
+  -- arithmetic
+  if (fn == ``HAdd.hAdd || fn == ``HSub.hSub || fn == ``HMul.hMul) && args.size == 6 &&
+      isIntTy args[0]! && isIntTy args[1]! && isIntTy args[2]! then
+    let op := if fn == ``HAdd.hAdd then "iadd" else if fn == ``HSub.hSub then "isub" else "imul"
+    return .bin op (← trI c args[4]!) (← trI c args[5]!)
+  if (fn == ``Int.add || fn == ``Int.sub || fn == ``Int.mul) && args.size == 2 then
+    let op := if fn == ``Int.add then "iadd" else if fn == ``Int.sub then "isub" else "imul"
+    return .bin op (← trI c args[0]!) (← trI c args[1]!)
+  if fn == ``HPow.hPow && args.size == 6 && isIntTy args[0]! && isNatTy args[1]! && isIntTy args[2]! then
+    return .bin "ipow" (← trI c args[4]!) (← tr c args[5]!)
+  -- if-then-else
+  if fn == ``ite && args.size == 5 && isIntTy args[0]! then
+    return .ite (← trProp c args[1]!) (← trI c args[3]!) (← trI c args[4]!)
+  -- ∑ / ∏ of ℤ over a ℕ source (`Finset.sum {ι M} [AddCommMonoid M] s f`: index type first)
+  if (fn == `Finset.sum || fn == `Finset.prod) && args.size == 5 && isNatTy args[0]! && isIntTy args[1]! then
+    let id ← fresh c
+    let (lo, hi, incl, filt) ← source c id args[3]!
+    let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      trI { c with loops := c.loops.push (x, id) } (args[4]!.beta #[x])
+    return .fold (if fn == `Finset.sum then "isum" else "iprod") id lo hi incl filt body
+  -- a non-recursive ℤ-valued helper ℕ^k → ℤ: inline its body (bounded depth). A recursive one
+  -- elaborates to a recursor / WellFounded.fix and is rejected while translating the body.
+  if fn != .anonymous && c.depth < 4 then
+    let ci ← getConstInfo fn
+    if let some v := ci.value? then
+      let ok ← forallTelescope ci.type fun xs body => do
+        if !isIntTy body || xs.size != args.size || xs.isEmpty then return false
+        for x in xs do
+          unless isNatTy (← inferType x) do return false
+        return true
+      if ok then return ← trI { c with depth := c.depth + 1 } (v.beta args)
+  bail s!"unsupported (ℤ): {fn}"
 
 /-- A finite ℕ range, optionally filtered: `(lo, hi, inclusive, filter)`; the filter is a boolean
 expression over loop variable `id`. -/
@@ -462,6 +542,7 @@ def freshC : CGM String := modifyGet fun s => (s!"t{s.tmp}", { s with tmp := s.t
 
 def cPrimOverflowing : List String := ["gcd", "lcm", "fact", "choose", "sqrt", "minfac", "fib", "digrev"]
 
+mutual
 /-- Emit C statements computing `e`; returns the C expression holding its value. -/
 partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
   | .lit n => pure s!"{n}ULL"
@@ -470,6 +551,7 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
   | .prev j => pure s!"w{j}"
   | .lvar id => pure s!"v{id}"
   | .bin op a b => do
+    if op.startsWith "i" then emitC "#error \"ill-typed MathIR: integer operation in a natural-number position\""
     let x ← cExpr sym ind a
     let y ← cExpr sym ind b
     let t ← freshC
@@ -477,6 +559,12 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
     emitC s!"{ind}if (lm2_{op}({x}, {y}, &{t})) return LM2_OVERFLOW;"
     return t
   | .prim op as => do
+    if op == "tonat" || op == "natabs" then
+      let x ← cExprI sym ind (as.headD default)
+      let t ← freshC
+      emitC s!"{ind}uint64_t {t} = lm2_{op}({x});"
+      return t
+    if op ∈ ["ofnat", "ineg", "isign"] then emitC "#error \"ill-typed MathIR: integer operation in a natural-number position\""
     let mut vs : Array String := #[]
     for a in as do vs := vs.push (← cExpr sym ind a)
     let t ← freshC
@@ -489,10 +577,11 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
       emitC s!"{ind}{t} = lm2_{fnName}({callArgs});"
     return t
   | .cmp k a b => do
-    let x ← cExpr sym ind a
-    let y ← cExpr sym ind b
+    let ints := k.startsWith "i"
+    let x ← if ints then cExprI sym ind a else cExpr sym ind a
+    let y ← if ints then cExprI sym ind b else cExpr sym ind b
     let t ← freshC
-    let op := match k with | "lt" => "<" | "le" => "<=" | _ => "=="
+    let op := match k with | "lt" | "ilt" => "<" | "le" | "ile" => "<=" | _ => "=="
     emitC s!"{ind}uint64_t {t} = ({x} {op} {y}) ? 1ULL : 0ULL;"
     return t
   | .not a => do
@@ -531,6 +620,7 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
     emitC s!"{ind}}"
     return t
   | .fold op id lo hi incl filt body => do
+    if op.startsWith "i" then emitC "#error \"ill-typed MathIR: integer fold in a natural-number position\""
     let l ← cExpr sym ind lo
     let h ← cExpr sym ind hi
     let t ← freshC
@@ -564,6 +654,71 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
     emitC s!"{ind}uint64_t {t};"
     emitC s!"{ind}if ({sym f}({", ".intercalate (vs.toList ++ [s!"&{t}"])}) != LM2_OK) return LM2_OVERFLOW;"
     return t
+
+/-- ℤ subterms as checked `int64_t` (an intermediate outside int64 is reported as overflow).
+An ill-typed node becomes `#error`, so the build fails closed. -/
+partial def cExprI (sym : Name → String) (ind : String) : E → CGM String
+  | .prim "ofnat" [x] => do
+    let v ← cExpr sym ind x
+    let t ← freshC
+    emitC s!"{ind}int64_t {t};"
+    emitC s!"{ind}if (lm2_ofnat({v}, &{t})) return LM2_OVERFLOW;"
+    return t
+  | .prim "ineg" [x] => do
+    let v ← cExprI sym ind x
+    let t ← freshC
+    emitC s!"{ind}int64_t {t};"
+    emitC s!"{ind}if (lm2_ineg({v}, &{t})) return LM2_OVERFLOW;"
+    return t
+  | .prim "isign" [x] => do
+    let v ← cExprI sym ind x
+    let t ← freshC
+    emitC s!"{ind}int64_t {t} = lm2_isign({v});"
+    return t
+  | .bin op a b => do
+    let x ← cExprI sym ind a
+    let y ← if op == "ipow" then cExpr sym ind b else cExprI sym ind b
+    let t ← freshC
+    emitC s!"{ind}int64_t {t};"
+    emitC s!"{ind}if (lm2_{op}({x}, {y}, &{t})) return LM2_OVERFLOW;"
+    return t
+  | .ite c th el => do
+    let x ← cExpr sym ind c
+    let t ← freshC
+    emitC s!"{ind}int64_t {t};"
+    emitC s!"{ind}if ({x} != 0ULL) \{"
+    let r1 ← cExprI sym (ind ++ "  ") th
+    emitC s!"{ind}  {t} = {r1};"
+    emitC s!"{ind}} else \{"
+    let r2 ← cExprI sym (ind ++ "  ") el
+    emitC s!"{ind}  {t} = {r2};"
+    emitC s!"{ind}}"
+    return t
+  | .fold op id lo hi incl filt body => do
+    let l ← cExpr sym ind lo
+    let h ← cExpr sym ind hi
+    let t ← freshC
+    let v := s!"v{id}"
+    emitC s!"{ind}int64_t {t} = {if op == "iprod" then "1" else "0"};"
+    emitC s!"{ind}if ({l} {if incl then "<=" else "<"} {h}) \{"
+    emitC s!"{ind}  uint64_t {v} = {l};"
+    emitC s!"{ind}  for (;;) \{"
+    let ind2 := ind ++ "    "
+    let f ← cExpr sym ind2 filt
+    emitC s!"{ind2}if ({f} != 0ULL) \{"
+    let ind3 := ind2 ++ "  "
+    let b ← cExprI sym ind3 body
+    emitC s!"{ind3}if (lm2_{if op == "iprod" then "imul" else "iadd"}({t}, {b}, &{t})) return LM2_OVERFLOW;"
+    emitC s!"{ind2}}"
+    emitC s!"{ind2}if ({if incl then s!"{v} == {h}" else s!"{v} + 1ULL == {h}"}) break;"
+    emitC s!"{ind2}{v}++;"
+    emitC s!"{ind}  }"
+    emitC s!"{ind}}"
+    return t
+  | _ => do
+    emitC "#error \"ill-typed MathIR integer node\""
+    return "0"
+end
 
 def cParams (arity : Nat) : String :=
   ", ".intercalate ((List.range arity).map (s!"uint64_t a{·}") ++ ["uint64_t *out"])
@@ -600,13 +755,15 @@ def cFunction (sym : Name → String) (n : Name) (d : FnDef) : String :=
 
 structure MG where
   lines : Array String := #[]
-  vars  : Array String := #[]
+  vars  : Array String := #[]     -- LONGCARD
+  ivars : Array String := #[]     -- LONGINT (ℤ subterms)
   tmp   : Nat := 0
 
 abbrev MGM := StateM MG
 
 def emitM (l : String) : MGM Unit := modify fun s => { s with lines := s.lines.push l }
 def freshM : MGM String := modifyGet fun s => (s!"t{s.tmp}", { s with tmp := s.tmp + 1, vars := s.vars.push s!"t{s.tmp}" })
+def freshMI : MGM String := modifyGet fun s => (s!"z{s.tmp}", { s with tmp := s.tmp + 1, ivars := s.ivars.push s!"z{s.tmp}" })
 def declM (v : String) : MGM Unit := modify fun s => if s.vars.contains v then s else { s with vars := s.vars.push v }
 
 def m2Bin : String → String
@@ -618,6 +775,7 @@ def m2Prim : String → String
   | "fib" => "Fib" | "log" => "Log" | "log2" => "Log2" | "padic" => "PadicVal" | "bigomega" => "BigOmega"
   | "digsum" => "DigSum" | "diglen" => "DigLen" | "digrev" => "DigRev" | _ => "Dvd"
 
+mutual
 partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
   | .lit n => pure (toString n)
   | .arg i => pure s!"a{i}"
@@ -631,6 +789,11 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
     emitM s!"{ind}IF LM2Nat.{m2Bin op}({x}, {y}, {t}) THEN RETURN Overflow END;"
     return t
   | .prim op as => do
+    if op == "tonat" || op == "natabs" then
+      let x ← mExprI sym ind (as.headD default)
+      let t ← freshM
+      emitM s!"{ind}{t} := LM2Nat.{if op == "tonat" then "ToNat" else "NatAbs"}({x});"
+      return t
     let mut vs : Array String := #[]
     for a in as do vs := vs.push (← mExpr sym ind a)
     let t ← freshM
@@ -641,10 +804,11 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
       emitM s!"{ind}{t} := LM2Nat.{m2Prim op}({callArgs});"
     return t
   | .cmp k a b => do
-    let x ← mExpr sym ind a
-    let y ← mExpr sym ind b
+    let ints := k.startsWith "i"
+    let x ← if ints then mExprI sym ind a else mExpr sym ind a
+    let y ← if ints then mExprI sym ind b else mExpr sym ind b
     let t ← freshM
-    let op := match k with | "lt" => "<" | "le" => "<=" | _ => "="
+    let op := match k with | "lt" | "ilt" => "<" | "le" | "ile" => "<=" | _ => "="
     emitM s!"{ind}IF {x} {op} {y} THEN {t} := 1 ELSE {t} := 0 END;"
     return t
   | .not a => do
@@ -716,6 +880,68 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
     emitM s!"{ind}IF {sym f}({", ".intercalate (vs.toList ++ [t])}) # Ok THEN RETURN Overflow END;"
     return t
 
+/-- ℤ subterms as checked LONGINT (see `cExprI`); an ill-typed node fails compilation. -/
+partial def mExprI (sym : Name → String) (ind : String) : E → MGM String
+  | .prim "ofnat" [x] => do
+    let v ← mExpr sym ind x
+    let t ← freshMI
+    emitM s!"{ind}IF LM2Nat.OfNat({v}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .prim "ineg" [x] => do
+    let v ← mExprI sym ind x
+    let t ← freshMI
+    emitM s!"{ind}IF LM2Nat.INeg({v}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .prim "isign" [x] => do
+    let v ← mExprI sym ind x
+    let t ← freshMI
+    emitM s!"{ind}{t} := LM2Nat.ISign({v});"
+    return t
+  | .bin op a b => do
+    let x ← mExprI sym ind a
+    let y ← if op == "ipow" then mExpr sym ind b else mExprI sym ind b
+    let t ← freshMI
+    let p := match op with | "iadd" => "IAdd" | "isub" => "ISub" | "imul" => "IMul" | _ => "IPow"
+    emitM s!"{ind}IF LM2Nat.{p}({x}, {y}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .ite c th el => do
+    let x ← mExpr sym ind c
+    let t ← freshMI
+    emitM s!"{ind}IF {x} # 0 THEN"
+    let r1 ← mExprI sym (ind ++ "  ") th
+    emitM s!"{ind}  {t} := {r1}"
+    emitM s!"{ind}ELSE"
+    let r2 ← mExprI sym (ind ++ "  ") el
+    emitM s!"{ind}  {t} := {r2}"
+    emitM s!"{ind}END;"
+    return t
+  | .fold op id lo hi incl filt body => do
+    let l ← mExpr sym ind lo
+    let h ← mExpr sym ind hi
+    let t ← freshMI
+    let v := s!"v{id}"
+    declM v
+    emitM s!"{ind}{t} := {if op == "iprod" then "1" else "0"};"
+    emitM s!"{ind}IF {l} {if incl then "<=" else "<"} {h} THEN"
+    emitM s!"{ind}  {v} := {l};"
+    emitM s!"{ind}  LOOP"
+    let ind2 := ind ++ "    "
+    let f ← mExpr sym ind2 filt
+    emitM s!"{ind2}IF {f} # 0 THEN"
+    let ind3 := ind2 ++ "  "
+    let b ← mExprI sym ind3 body
+    emitM s!"{ind3}IF LM2Nat.{if op == "iprod" then "IMul" else "IAdd"}({t}, {b}, {t}) THEN RETURN Overflow END"
+    emitM s!"{ind2}END;"
+    emitM s!"{ind2}IF {if incl then s!"{v} = {h}" else s!"{v} + 1 = {h}"} THEN EXIT END;"
+    emitM s!"{ind2}INC({v})"
+    emitM s!"{ind}  END"
+    emitM s!"{ind}END;"
+    return t
+  | _ => do
+    emitM "ILL-TYPED MathIR integer node (deliberate syntax error: fail closed)"
+    return "0"
+end
+
 def mParams (arity : Nat) : String :=
   let as := ", ".intercalate ((List.range arity).map (s!"a{·}"))
   s!"{as}: LONGCARD; VAR out: LONGCARD"
@@ -748,7 +974,9 @@ def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
       emitM s!"  out := w{K - 1};"
     emitM "  RETURN Ok"
   let st := (body.run {}).2
-  let varDecl := if st.vars.isEmpty then "" else s!"VAR\n  {", ".intercalate st.vars.toList}: LONGCARD;\n"
+  let natDecl := if st.vars.isEmpty then "" else s!"  {", ".intercalate st.vars.toList}: LONGCARD;\n"
+  let intDecl := if st.ivars.isEmpty then "" else s!"  {", ".intercalate st.ivars.toList}: LONGINT;\n"
+  let varDecl := if natDecl ++ intDecl == "" then "" else "VAR\n" ++ natDecl ++ intDecl
   s!"(* Lean: {n} *)\nPROCEDURE {sym n} ({mParams d.arity}) : INTEGER;\n{varDecl}BEGIN\n" ++
     "\n".intercalate st.lines.toList ++ s!"\nEND {sym n};\n"
 
@@ -788,6 +1016,9 @@ def tick (b : Budget) : IRM Unit := do
 
 def chk (b : Budget) (v : Nat) : IRM Nat :=
   if v.log2 ≥ b.maxBits then throw "size budget" else pure v
+
+def chkI (b : Budget) (v : Int) : IRM Int :=
+  if v.natAbs.log2 ≥ b.maxBits then throw "size budget" else pure v
 
 def b2n (p : Bool) : Nat := if p then 1 else 0
 
@@ -903,6 +1134,9 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
       else if c * (a.log2 + 1) > b.maxBits + 64 then throw "size budget"
       else chk b (a ^ c)
   | .prim op xs => do
+    if op == "tonat" || op == "natabs" then
+      let v ← evalI b defs args i w lv (xs.headD default)
+      return (if op == "tonat" then v.toNat else v.natAbs)
     let mut vs : Array Nat := #[]
     for x in xs do vs := vs.push (← evalE b defs args i w lv x)
     let a := vs.getD 0 0
@@ -929,6 +1163,10 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     | "digrev" => if a == 1 && c > 2 ^ 16 then throw "digits budget" else chk b (ofDigitsN a (digitsN a c).reverse)
     | _ => pure (b2n (if a == 0 then c == 0 else c % a == 0))   -- dvd
   | .cmp k x y => do
+    if k.startsWith "i" then
+      let a ← evalI b defs args i w lv x
+      let c ← evalI b defs args i w lv y
+      return b2n (match k with | "ilt" => decide (a < c) | "ile" => decide (a ≤ c) | _ => a == c)
     let a ← evalE b defs args i w lv x
     let c ← evalE b defs args i w lv y
     pure (b2n (match k with | "lt" => decide (a < c) | "le" => decide (a ≤ c) | _ => a == c))
@@ -963,6 +1201,45 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     for x in xs do vs := vs.push (← evalE b defs args i w lv x)
     let some d := defs.get? f | throw "unknown callee"
     evalDef b defs d vs
+
+/-- ℤ-valued subterms (see `trI`). -/
+partial def evalI (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat) (i : Nat)
+    (w : Array Nat) (lv : Std.HashMap Nat Nat) : E → IRM Int
+  | .prim "ofnat" [x] => do pure (Int.ofNat (← evalE b defs args i w lv x))
+  | .prim "ineg" [x] => do pure (- (← evalI b defs args i w lv x))
+  | .prim "isign" [x] => do pure (← evalI b defs args i w lv x).sign
+  | .bin op x y => do
+    let a ← evalI b defs args i w lv x
+    match op with
+    | "iadd" => chkI b (a + (← evalI b defs args i w lv y))
+    | "isub" => chkI b (a - (← evalI b defs args i w lv y))
+    | "imul" => chkI b (a * (← evalI b defs args i w lv y))
+    | "ipow" =>
+      let c ← evalE b defs args i w lv y
+      -- Int.pow is Nat.pow on natAbs: Lean's runtime panics for exponent > 2^32-1 (see "pow")
+      if c > 4294967295 then throw "runtime limit: Nat.pow exponent > 2^32-1"
+      else if c == 0 then pure 1
+      else if a.natAbs ≤ 1 then pure (if a == -1 && c % 2 == 1 then -1 else if a == -1 then 1 else a)
+      else if c * (a.natAbs.log2 + 1) > b.maxBits + 64 then throw "size budget"
+      else chkI b (a ^ c)
+    | _ => throw "ill-typed ℤ node"
+  | .ite c t e => do
+    if (← evalE b defs args i w lv c) != 0 then evalI b defs args i w lv t else evalI b defs args i w lv e
+  | .fold op id lo hi incl filt body => do
+    let l ← evalE b defs args i w lv lo
+    let h ← evalE b defs args i w lv hi
+    let stop := if incl then h + 1 else h
+    let mut acc : Int := if op == "iprod" then 1 else 0
+    let mut k := l
+    while k < stop do
+      tick b
+      let lv' := lv.insert id k
+      if (← evalE b defs args i w lv' filt) != 0 then
+        let v ← evalI b defs args i w lv' body
+        acc ← chkI b (if op == "iprod" then acc * v else acc + v)
+      k := k + 1
+    return acc
+  | _ => throw "ill-typed ℤ node"
 
 partial def evalDef (b : Budget) (defs : Std.HashMap Name FnDef) (d : FnDef) (vs : Array Nat) : IRM Nat := do
   match d with

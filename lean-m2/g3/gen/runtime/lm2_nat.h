@@ -1,4 +1,4 @@
-/* LEAN-M2-CC-001 MathIR runtime (v1 core, v2/v3 builtins): checked operations on 64-bit unsigned integers with
+/* LEAN-M2-CC-001 MathIR runtime (v1 core, v2/v3 builtins, v4 ℤ): checked operations on 64-bit unsigned integers with
  * Lean ℕ semantics. Each returns 1 on overflow (result NOT written), 0 otherwise.
  *   sub truncates at 0 (ℕ subtraction)   div: x / 0 = 0   mod: x % 0 = x   pow: 0^0 = 1
  * Hand-written, fixed (not generated). Compiled only by CompCert. */
@@ -163,6 +163,53 @@ static int lm2_digrev(uint64_t b, uint64_t n, uint64_t *r) {
     if (lm2_mul(acc, b, &t)) return 1;
     if (lm2_add(t, n % b, &acc)) return 1;
     n /= b;
+  }
+  *r = acc; return 0;
+}
+
+/* ---- MathIR v4: ℤ subterms as checked int64_t (Lean Int semantics on the representable range;
+ * an intermediate outside [-2^63, 2^63-1] is reported as overflow: sound, possibly incomplete) ---- */
+static uint64_t lm2_natabs(int64_t a) { return a < 0 ? (uint64_t)(-(a + 1)) + 1u : (uint64_t)a; }
+static uint64_t lm2_tonat(int64_t a) { return a < 0 ? 0u : (uint64_t)a; }
+static int64_t lm2_isign(int64_t a) { return a > 0 ? 1 : (a < 0 ? -1 : 0); }
+static int lm2_ofnat(uint64_t x, int64_t *r) {
+  if (x > (uint64_t)INT64_MAX) return 1;
+  *r = (int64_t)x; return 0;
+}
+static int lm2_ineg(int64_t a, int64_t *r) {
+  if (a == INT64_MIN) return 1;
+  *r = -a; return 0;
+}
+static int lm2_iadd(int64_t a, int64_t b, int64_t *r) {
+  if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b)) return 1;
+  *r = a + b; return 0;
+}
+static int lm2_isub(int64_t a, int64_t b, int64_t *r) {
+  if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b)) return 1;
+  *r = a - b; return 0;
+}
+/* product through magnitudes: |a*b| must be <= 2^63-1, or exactly 2^63 when negative */
+static int lm2_imul(int64_t a, int64_t b, int64_t *r) {
+  uint64_t ua = lm2_natabs(a), ub = lm2_natabs(b), p;
+  int neg = (a < 0) != (b < 0);
+  if (lm2_mul(ua, ub, &p)) return 1;
+  if (!neg) { if (p > (uint64_t)INT64_MAX) return 1; *r = (int64_t)p; return 0; }
+  if (p > (uint64_t)INT64_MAX + 1u) return 1;
+  *r = (p == (uint64_t)INT64_MAX + 1u) ? INT64_MIN : -(int64_t)p; return 0;
+}
+/* Int.pow (exponent ℕ). For |a| >= 2, |a|^e >= 2^e, so e >= 64 always overflows; a squaring is
+ * performed only while exponent bits remain, so an overflow there is genuine. */
+static int lm2_ipow(int64_t a, uint64_t e, int64_t *r) {
+  int64_t acc = 1, base = a;
+  if (e == 0u) { *r = 1; return 0; }
+  if (a == 0 || a == 1) { *r = a; return 0; }
+  if (a == -1) { *r = (e & 1u) ? -1 : 1; return 0; }
+  if (e >= 64u) return 1;
+  for (;;) {
+    if (e & 1u) { if (lm2_imul(acc, base, &acc)) return 1; }
+    e >>= 1;
+    if (e == 0u) break;
+    if (lm2_imul(base, base, &base)) return 1;
   }
   *r = acc; return 0;
 }

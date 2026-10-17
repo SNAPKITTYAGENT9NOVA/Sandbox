@@ -10,10 +10,10 @@ machine-readable evidence and blocks on anything unmeasured.
 | **G0** toolchain probe | **PASS** (`TOOLCHAIN_ONLY_PASS`), native AArch64 CI | `lean-m2 workstation (G0)` run annotations |
 | **G1** corpus inventory | **PASS** (pre-elaboration), Lean-native tool | `corpus.lock.yaml`, `corpus/…/EVIDENCE.sha256`, `lean-m2 G1` runs |
 | **G2** Lean validation and axiom ledger | **PASS** | `corpus/formal-conjectures/84cf7f8/g2-headline.json`, `corpus.lock.yaml` |
-| **G3** extraction to C | **MathIR v6 generator**: 164 of 246 `ℕᵏ→ℕ` definitions translated from Lean's equation lemmas (82 blocked, each with its reason in the ledger); 0 IR-vs-Lean fidelity mismatches | `g3/gen/LEDGER.json` |
+| **G3** extraction to C | **MathIR v7 generator**: 171 of 246 `ℕᵏ→ℕ` definitions translated from Lean's equation lemmas (75 blocked, each with its reason in the ledger); 0 IR-vs-Lean fidelity mismatches | `g3/gen/LEDGER.json` |
 | **G4** CompCert build | **PASS**: SLICE-001 and all generated code (ccomp 3.18, AArch64 ELF) | `g3/slice001/LEDGER.json`, `g3/gen/LEDGER.json` |
 | **G5** Modula-2 | **PASS**: generated native Modula-2 (`LM2Gen`) + C binding, gm2 13.3.0 ISO | `g3/gen/LEDGER.json` |
-| **G6** differential testing and release | **0 unsound, 0 incomplete** in 16,256 generated-code cases (exact 4224-bit fallback when the 64-bit path overflows; 4,379 inputs skipped over budget); SLICE-001 acceptance passes on generated code; release gate not built | `g3/gen/LEDGER.json` |
+| **G6** differential testing and release | **0 unsound, 0 incomplete** in 16,723 generated-code cases (exact 4224-bit fallback when the 64-bit path overflows; 4,548 inputs skipped over budget); SLICE-001 acceptance passes on generated code; release gate not built | `g3/gen/LEDGER.json` |
 
 ## Frozen corpus
 

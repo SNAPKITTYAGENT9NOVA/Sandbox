@@ -10,10 +10,10 @@ machine-readable evidence and blocks on anything unmeasured.
 | **G0** toolchain probe | **PASS** (`TOOLCHAIN_ONLY_PASS`), native AArch64 CI | `lean-m2 workstation (G0)` run annotations |
 | **G1** corpus inventory | **PASS** (pre-elaboration), Lean-native tool | `corpus.lock.yaml`, `corpus/…/EVIDENCE.sha256`, `lean-m2 G1` runs |
 | **G2** Lean validation and axiom ledger | **PASS** | `corpus/formal-conjectures/84cf7f8/g2-headline.json`, `corpus.lock.yaml` |
-| **G3** extraction to C | **MathIR v4 generator**: 140 of 246 `ℕᵏ→ℕ` definitions translated from Lean's equation lemmas (106 blocked, each with its reason in the ledger); 0 IR-vs-Lean fidelity mismatches | `g3/gen/LEDGER.json` |
+| **G3** extraction to C | **MathIR v5 generator**: 158 of 246 `ℕᵏ→ℕ` definitions translated from Lean's equation lemmas (88 blocked, each with its reason in the ledger); 0 IR-vs-Lean fidelity mismatches | `g3/gen/LEDGER.json` |
 | **G4** CompCert build | **PASS**: SLICE-001 and all generated code (ccomp 3.18, AArch64 ELF) | `g3/slice001/LEDGER.json`, `g3/gen/LEDGER.json` |
 | **G5** Modula-2 | **PASS**: generated native Modula-2 (`LM2Gen`) + C binding, gm2 13.3.0 ISO | `g3/gen/LEDGER.json` |
-| **G6** differential testing and release | **0 unsound, 0 incomplete** in 15,223 generated-code cases (exact 4224-bit fallback when the 64-bit path overflows; 3,684 inputs skipped over budget); SLICE-001 acceptance passes on generated code; release gate not built | `g3/gen/LEDGER.json` |
+| **G6** differential testing and release | **0 unsound, 0 incomplete** in 15,979 generated-code cases (exact 4224-bit fallback when the 64-bit path overflows; 4,224 inputs skipped over budget); SLICE-001 acceptance passes on generated code; release gate not built | `g3/gen/LEDGER.json` |
 
 ## Frozen corpus
 
@@ -115,7 +115,7 @@ All three publish their key evidence as check-run annotations, and upload full e
 
 - Ledger the `postpone` build variant.
 - Record the base-image and published-image digests.
-- Widen the MathIR fragment toward the largest remaining blocked classes (`Finset.image` sources, `Rat.num`/`Rat.den`, `Finset.card`/`sup` over non-ℕ types, `Fintype.card`, `List` folds, `Finset.lcm`), then re-measure coverage.
+- Widen the MathIR fragment toward the largest remaining blocked classes (`Rat.num`/`Rat.den`, sets of pairs / subsets (`×ˢ`, `powerset`), `Finset.card`/`sup` over non-ℕ types, `Fintype.card`, `List` folds, `Finset.lcm`), then re-measure coverage.
 
 Resolved:
 - **The `lcProof` dependent** is a compiler-generated `unsafe` auxiliary (`Nat.primeFactorsEq.unsafe_1`).

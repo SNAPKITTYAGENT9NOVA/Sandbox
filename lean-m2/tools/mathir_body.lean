@@ -62,8 +62,15 @@ inductive E where
   | ite  (c t e : E)                     -- c is boolean
   | fold (op : String) (id : Nat) (lo hi : E) (incl : Bool) (filt : E) (body : E)  -- sum prod count max | ℤ body: isum iprod
   | call (fn : Name) (args : List E)
+  -- left fold over a ℕ range with an accumulator (lists): a := init; for each counter value k
+  -- passing filt, a := body (lvar id = k, lvar acc = a). Accumulator ids are ≥ accBase.
+  | iter (id acc : Nat) (lo hi : E) (incl : Bool) (filt init body : E)
 
 instance : Inhabited E := ⟨.lit 0⟩
+
+/-- Loop-variable ids at or above this denote fold accumulators (an ℕ value in every backend,
+held at full width on the wide path). -/
+def accBase : Nat := 1000000
 
 partial def E.json : E → Json
   | .lit n => Json.mkObj [("lit", Lean.toJson (toString n))]
@@ -81,6 +88,8 @@ partial def E.json : E → Json
   | .fold op i lo hi incl f b => Json.mkObj [("fold", Lean.toJson op), ("var", Lean.toJson i), ("lo", lo.json),
       ("hi", hi.json), ("inclusive", Lean.toJson incl), ("filter", f.json), ("body", b.json)]
   | .call f as => Json.mkObj [("call", Lean.toJson f.toString), ("args", Lean.toJson (as.map E.json))]
+  | .iter i a lo hi incl f init b => Json.mkObj [("iter", Lean.toJson i), ("acc", Lean.toJson a), ("lo", lo.json),
+      ("hi", hi.json), ("inclusive", Lean.toJson incl), ("filter", f.json), ("init", init.json), ("body", b.json)]
 
 partial def E.children : E → List E
   | .bin _ a b | .cmp _ a b | .and a b | .or a b => [a, b]
@@ -88,6 +97,7 @@ partial def E.children : E → List E
   | .prim _ as | .call _ as => as
   | .ite c t e => [c, t, e]
   | .fold _ _ lo hi _ f b => [lo, hi, f, b]
+  | .iter _ _ lo hi _ f init b => [lo, hi, f, init, b]
   | _ => []
 
 partial def E.calls (e : E) : List Name :=
@@ -96,7 +106,7 @@ partial def E.calls (e : E) : List Name :=
 /-- Anything whose reference evaluation may be costly: pow, loops, heavy builtins. -/
 partial def E.heavy (e : E) : Bool :=
   (match e with
-   | .bin "pow" _ _ | .bin "ipow" _ _ | .bin "qpow" _ _ | .fold .. => true
+   | .bin "pow" _ _ | .bin "ipow" _ _ | .bin "qpow" _ _ | .fold .. | .iter .. => true
    | .prim op _ => op ∈ ["fact", "choose", "minfac", "prime", "lcm", "fib", "bigomega"]
    | _ => false) || e.children.any E.heavy
 
@@ -264,7 +274,11 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if fn == ``List.sum && args.size == 4 && isNatTy args[0]! then
     let (g, ga) := (args[3]!.consumeMData).getAppFnArgs
     if g == `Nat.digits && ga.size == 2 then return .prim "digsum" [← tr c ga[0]!, ← tr c ga[1]!]
-    bail "unsupported: List.sum"
+    let id ← fresh c
+    let (lo, hi, incl, filt, elem) ← lsource c id args[3]!
+    let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := c.loops.push (x, id) } (elem.beta #[x])
+    return .fold "sum" id lo hi incl filt body
   if fn == ``List.length && args.size == 2 && isNatTy args[0]! then
     let (g, ga) := (args[1]!.consumeMData).getAppFnArgs
     if g == `Nat.digits && ga.size == 2 then return .prim "diglen" [← tr c ga[0]!, ← tr c ga[1]!]
@@ -275,7 +289,28 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
         let x ← tr c ha[0]!
         let id ← fresh c
         return .fold "count" id (.lit 1) x true (.and (.prim "dvd" [.lvar id, x]) (.prim "prime" [.lvar id])) (.lit 1)
-    bail "unsupported: List.length"
+    let id ← fresh c
+    let (lo, hi, incl, filt, _) ← lsource c id args[1]!
+    return .fold "count" id lo hi incl filt (.lit 1)
+  -- l.foldl f init over a range-based list: an accumulator loop
+  if fn == ``List.foldl && args.size == 5 && isNatTy args[0]! && isNatTy args[1]! then
+    let id ← fresh c
+    let acc := accBase + (← fresh c)
+    let (lo, hi, incl, filt, elem) ← lsource c id args[4]!
+    let init ← tr c args[3]!
+    let body ← withLocalDeclD `a (mkConst ``Nat) fun a => withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := (c.loops.push (x, id)).push (a, acc) } (args[2]!.beta #[a, elem.beta #[x]])
+    return .iter id acc lo hi incl filt init body
+  -- l.headD d: the first element, or d for the empty list (accumulator: 0 = none yet, else elem + 1)
+  if fn == ``List.headD && args.size == 3 && isNatTy args[0]! then
+    let id ← fresh c
+    let acc := accBase + (← fresh c)
+    let (lo, hi, incl, filt, elem) ← lsource c id args[1]!
+    let e ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := c.loops.push (x, id) } (elem.beta #[x])
+    let first := E.iter id acc lo hi incl filt (.lit 0)
+      (.ite (.cmp "eq" (.lvar acc) (.lit 0)) (.bin "add" e (.lit 1)) (.lvar acc))
+    return .ite (.cmp "eq" first (.lit 0)) (← tr c args[2]!) (.bin "sub" first (.lit 1))
   -- ofDigits b (digits b n).reverse : digit reversal (same base on both sides)
   if fn == `Nat.ofDigits && args.size == 4 && isNatTy args[0]! then
     let (g, ga) := (args[3]!.consumeMData).getAppFnArgs
@@ -560,6 +595,27 @@ partial def source (c : Ctx) (id : Nat) (s : Expr) : TrM (E × E × Bool × E ×
     return (lo, hi, incl, filt, elem)
   bail s!"unsupported Finset source: {fn}"
 
+/-- A list of ℕ built from a range: `(lo, hi, inclusive, filter, elem)` like `source`, but in list
+order and keeping duplicates (`map` does not deduplicate). -/
+partial def lsource (c : Ctx) (id : Nat) (l : Expr) : TrM (E × E × Bool × E × Expr) := do
+  let l := l.consumeMData
+  if let .letE _ _ v b _ := l then return ← lsource c id (b.instantiate1 v)
+  let (fn, args) := l.getAppFnArgs
+  if fn == ``List.range && args.size == 1 then
+    return (.lit 0, ← tr c args[0]!, false, .lit 1, idElem)
+  if fn == `List.Ico && args.size == 2 then
+    return (← tr c args[0]!, ← tr c args[1]!, false, .lit 1, idElem)
+  if fn == ``List.filter && args.size == 3 && isNatTy args[0]! then
+    let (lo, hi, incl, f0, elem) ← lsource c id args[2]!
+    let f1 ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      trBool { c with loops := c.loops.push (x, id) } (args[1]!.beta #[elem.beta #[x]])
+    let filt := match f0 with | .lit 1 => f1 | _ => .and f0 f1
+    return (lo, hi, incl, filt, elem)
+  if fn == ``List.map && args.size == 4 && isNatTy args[0]! && isNatTy args[1]! then
+    let (lo, hi, incl, filt, e0) ← lsource c id args[3]!
+    return (lo, hi, incl, filt, .lam `k (mkConst ``Nat) (.app args[2]! (.app e0 (.bvar 0))) .default)
+  bail s!"unsupported list: {fn}"
+
 end
 
 /-- Arity if `ty` is `ℕ → … → ℕ` with 1–3 explicit ℕ binders. -/
@@ -625,7 +681,11 @@ def extract (n : Name) (arity : Nat) : MetaM (Except String FnDef) := do
   unless steps.size == 1 do return .error s!"{steps.size} step equations (need exactly one)"
   let (K, _, _, _) := steps[0]!
   let lits := (bases.map (·.1)).qsort (· < ·)
-  unless lits == (List.range K).toArray do
+  -- base cases must be exactly 0..B-1 with B ≥ K. With overlapping patterns (e.g. `| 0 | 1 | n+1`)
+  -- B > K: the step equation then holds only for arguments ≥ B (Lean matches earlier patterns
+  -- first), which is reproduced below by selecting the extra base values inside the step.
+  let B := lits.size
+  unless B ≥ K && lits == (List.range B).toArray do
     return .error s!"base cases {lits.toList} do not cover 0..{K}-1"
   -- re-open each equation to translate it (fvars are only valid inside their telescope)
   let mut baseE : Array (Nat × E) := #[]
@@ -650,7 +710,12 @@ def extract (n : Name) (arity : Nat) : MetaM (Except String FnDef) := do
     | .ok (none, e) => stepE? := some e
   let some stepE := stepE? | return .error "missing step equation"
   let basesSorted := (baseE.qsort (fun a b => a.1 < b.1)).toList.map (·.2)
-  return .ok (.recur arity j basesSorted stepE)
+  -- extra base values f c for K ≤ c < B: inside the step (idx m computes f (m + K)), select them
+  let mut step := stepE
+  for c in (List.range B).reverse do
+    if c ≥ K then
+      step := .ite (.cmp "eq" .idx (.lit (c - K))) (basesSorted.getD c (.lit 0)) step
+  return .ok (.recur arity j (basesSorted.take K) step)
 
 /-! ## Names -/
 
@@ -779,6 +844,31 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
     emitC s!"{ind2}{v}++;"
     emitC s!"{ind}  }"
     emitC s!"{ind}}"
+    return t
+  | .iter id acc lo hi incl filt init body => do
+    let l ← cExpr sym ind lo
+    let h ← cExpr sym ind hi
+    let i0 ← cExpr sym ind init
+    let v := s!"v{id}"
+    let a := s!"v{acc}"
+    let t ← freshC
+    -- own block: the accumulator name is per iter node, which may be emitted more than once
+    emitC s!"{ind}uint64_t {t};"
+    emitC s!"{ind}\{ uint64_t {a} = {i0};"
+    emitC s!"{ind}if ({l} {if incl then "<=" else "<"} {h}) \{"
+    emitC s!"{ind}  uint64_t {v} = {l};"
+    emitC s!"{ind}  for (;;) \{"
+    let ind2 := ind ++ "    "
+    let f ← cExpr sym ind2 filt
+    emitC s!"{ind2}if ({f} != 0ULL) \{"
+    let b ← cExpr sym (ind2 ++ "  ") body
+    emitC s!"{ind2}  {a} = {b};"
+    emitC s!"{ind2}}"
+    emitC s!"{ind2}if ({if incl then s!"{v} == {h}" else s!"{v} + 1ULL == {h}"}) break;"
+    emitC s!"{ind2}{v}++;"
+    emitC s!"{ind}  }"
+    emitC s!"{ind}}"
+    emitC s!"{ind}{t} = {a}; }"
     return t
   | .call f as => do
     let mut vs : Array String := #[]
@@ -911,6 +1001,7 @@ partial def cExprW (sym : Name → String) (ind : String) : E → CGM String
     return t
   | .prev j => pure s!"w{j}"
   | .lvar id => do
+    if id ≥ accBase then return s!"v{id}"          -- accumulator: already wide
     let t ← freshC
     emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, v{id});"
     return t
@@ -1016,6 +1107,34 @@ partial def cExprW (sym : Name → String) (ind : String) : E → CGM String
     emitC s!"{ind2}{v}++;"
     emitC s!"{ind}  }"
     emitC s!"{ind}}"
+    return t
+  | .iter id acc lo hi incl filt init body => do
+    let l ← cExprW sym ind lo
+    let h ← cExprW sym ind hi
+    let i0 ← cExprW sym ind init
+    let lb ← freshC
+    let hb ← freshC
+    let v := s!"v{id}"
+    let a := s!"v{acc}"
+    emitC s!"{ind}uint64_t {lb}, {hb};"
+    emitC s!"{ind}if (lm2w_get(&{l}, &{lb}) || lm2w_get(&{h}, &{hb})) return LM2_OVERFLOW;"
+    let t ← freshC
+    emitC s!"{ind}lm2w {t};"
+    emitC s!"{ind}\{ lm2w {a}; {a} = {i0};"
+    emitC s!"{ind}if ({lb} {if incl then "<=" else "<"} {hb}) \{"
+    emitC s!"{ind}  uint64_t {v} = {lb};"
+    emitC s!"{ind}  for (;;) \{"
+    let ind2 := ind ++ "    "
+    let f ← cExprW sym ind2 filt
+    emitC s!"{ind2}if ({cCond f}) \{"
+    let b ← cExprW sym (ind2 ++ "  ") body
+    emitC s!"{ind2}  {a} = {b};"
+    emitC s!"{ind2}}"
+    emitC s!"{ind2}if ({if incl then s!"{v} == {hb}" else s!"{v} + 1ULL == {hb}"}) break;"
+    emitC s!"{ind2}{v}++;"
+    emitC s!"{ind}  }"
+    emitC s!"{ind}}"
+    emitC s!"{ind}{t} = {a}; }"
     return t
   | .call f as => do
     let mut vs : Array String := #[]
@@ -1343,6 +1462,28 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
     emitM s!"{ind}  END"
     emitM s!"{ind}END;"
     return t
+  | .iter id acc lo hi incl filt init body => do
+    let l ← mExpr sym ind lo
+    let h ← mExpr sym ind hi
+    let i0 ← mExpr sym ind init
+    let v := s!"v{id}"
+    let a := s!"v{acc}"
+    declM v; declM a
+    emitM s!"{ind}{a} := {i0};"
+    emitM s!"{ind}IF {l} {if incl then "<=" else "<"} {h} THEN"
+    emitM s!"{ind}  {v} := {l};"
+    emitM s!"{ind}  LOOP"
+    let ind2 := ind ++ "    "
+    let f ← mExpr sym ind2 filt
+    emitM s!"{ind2}IF {f} # 0 THEN"
+    let b ← mExpr sym (ind2 ++ "  ") body
+    emitM s!"{ind2}  {a} := {b}"
+    emitM s!"{ind2}END;"
+    emitM s!"{ind2}IF {if incl then s!"{v} = {h}" else s!"{v} + 1 = {h}"} THEN EXIT END;"
+    emitM s!"{ind2}INC({v})"
+    emitM s!"{ind}  END"
+    emitM s!"{ind}END;"
+    return a
   | .call f as => do
     let mut vs : Array String := #[]
     for a in as do vs := vs.push (← mExpr sym ind a)
@@ -1480,6 +1621,8 @@ partial def mExprW (sym : Name → String) (ind : String) : E → MGM String
     return t
   | .prev j => do declMW s!"w{j}"; pure s!"w{j}"
   | .lvar id => do
+    if id ≥ accBase then
+      declMW s!"v{id}"; return s!"v{id}"            -- accumulator: already wide
     declM s!"v{id}"
     let t ← freshMW
     emitM s!"{ind}LM2Wide.Set({t}, v{id});"
@@ -1582,6 +1725,31 @@ partial def mExprW (sym : Name → String) (ind : String) : E → MGM String
     emitM s!"{ind}  END"
     emitM s!"{ind}END;"
     return t
+  | .iter id acc lo hi incl filt init body => do
+    let l ← mExprW sym ind lo
+    let h ← mExprW sym ind hi
+    let i0 ← mExprW sym ind init
+    let lb ← freshM
+    let hb ← freshM
+    let v := s!"v{id}"
+    let a := s!"v{acc}"
+    declM v; declMW a
+    emitM s!"{ind}IF LM2Wide.Get({l}, {lb}) OR LM2Wide.Get({h}, {hb}) THEN RETURN Overflow END;"
+    emitM s!"{ind}{a} := {i0};"
+    emitM s!"{ind}IF {lb} {if incl then "<=" else "<"} {hb} THEN"
+    emitM s!"{ind}  {v} := {lb};"
+    emitM s!"{ind}  LOOP"
+    let ind2 := ind ++ "    "
+    let f ← mExprW sym ind2 filt
+    emitM s!"{ind2}IF NOT LM2Wide.IsZero({f}) THEN"
+    let b ← mExprW sym (ind2 ++ "  ") body
+    emitM s!"{ind2}  {a} := {b}"
+    emitM s!"{ind2}END;"
+    emitM s!"{ind2}IF {if incl then s!"{v} = {hb}" else s!"{v} + 1 = {hb}"} THEN EXIT END;"
+    emitM s!"{ind2}INC({v})"
+    emitM s!"{ind}  END"
+    emitM s!"{ind}END;"
+    return a
   | .call f as => do
     let mut vs : Array String := #[]
     for a in as do vs := vs.push (← mExprW sym ind a)
@@ -2003,6 +2171,19 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
             else if op == "lcm" then Nat.lcm acc v else acc + v)
       k := k + 1
     return acc
+  | .iter id acc lo hi incl filt init body => do
+    let l ← evalE b defs args i w lv lo
+    let h ← evalE b defs args i w lv hi
+    let stop := if incl then h + 1 else h
+    let mut a ← evalE b defs args i w lv init
+    let mut k := l
+    while k < stop do
+      tick b
+      let lv' := (lv.insert id k).insert acc a
+      if (← evalE b defs args i w lv' filt) != 0 then
+        a ← evalE b defs args i w lv' body
+      k := k + 1
+    return a
   | .call f xs => do
     tick b
     let mut vs : Array Nat := #[]

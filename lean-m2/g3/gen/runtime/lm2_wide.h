@@ -292,6 +292,11 @@ static int lm2w_digrev(const lm2w *b, const lm2w *n, lm2w *r) {
   *r = acc; return 0;
 }
 
+static int lm2w_xor(const lm2w *a, const lm2w *b, lm2w *r) {
+  lm2w t; uint32_t i, m = a->n > b->n ? a->n : b->n;
+  for (i = 0u; i < m; i++) t.d[i] = (i < a->n ? a->d[i] : 0u) ^ (i < b->n ? b->d[i] : 0u);
+  t.n = m; lm2w_norm(&t); *r = t; return 0;
+}
 /* ---- ℤ (sign-magnitude) ---- */
 static void lm2wi_fix(lm2wi *a) { if (a->m.n == 0u) a->neg = 0; }
 static int lm2wi_ofnat(const lm2w *a, lm2wi *r) { r->m = *a; r->neg = 0; return 0; }

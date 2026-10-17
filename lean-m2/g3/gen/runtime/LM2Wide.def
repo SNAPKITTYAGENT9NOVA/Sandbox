@@ -44,6 +44,7 @@ PROCEDURE Padic (VAR p, n, r: Wide) : BOOLEAN;
 PROCEDURE DigSum (VAR b, n, r: Wide) : BOOLEAN;
 PROCEDURE DigLen (VAR b, n, r: Wide) : BOOLEAN;
 PROCEDURE DigRev (VAR b, n, r: Wide) : BOOLEAN;
+PROCEDURE Xor (VAR a, b, r: Wide) : BOOLEAN;
 
 PROCEDURE IOfNat (VAR a: Wide; VAR r: WInt) : BOOLEAN;
 PROCEDURE INeg (VAR a, r: WInt) : BOOLEAN;

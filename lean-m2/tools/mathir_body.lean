@@ -177,6 +177,9 @@ def fresh (c : Ctx) : TrM Nat := do
   c.ctr.set (n + 1)
   return n
 
+/-- The identity `fun k : ℕ => k`: the element of a plain range is its loop counter. -/
+def idElem : Expr := .lam `k (mkConst ``Nat) (.bvar 0) .default
+
 mutual
 
 /-- Translate a ℕ-valued expression. -/
@@ -207,6 +210,24 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   -- ℤ → ℕ
   if fn == ``Int.toNat && args.size == 1 then return .prim "tonat" [← trI c args[0]!]
   if fn == ``Int.natAbs && args.size == 1 then return .prim "natabs" [← trI c args[0]!]
+  -- MathIR v5 builtins
+  if fn == ``Nat.pred && args.size == 1 then return .bin "sub" (← tr c args[0]!) (.lit 1)
+  if fn == `Nat.centralBinom && args.size == 1 then
+    let n ← tr c args[0]!
+    return .prim "choose" [.bin "mul" (.lit 2) n, n]
+  if fn == `Nat.fermatNumber && args.size == 1 then
+    return .bin "add" (.bin "pow" (.lit 2) (.bin "pow" (.lit 2) (← tr c args[0]!))) (.lit 1)
+  if (fn == ``HXor.hXor && args.size == 6 && isNatTy args[0]! && isNatTy args[1]!) then
+    return .prim "xor" [← tr c args[4]!, ← tr c args[5]!]
+  if fn == ``Nat.xor && args.size == 2 then return .prim "xor" [← tr c args[0]!, ← tr c args[1]!]
+  if fn == ``Bool.toNat && args.size == 1 then return ← trBool c args[0]!
+  -- `if h : c then t else e` whose branches do not use `h`
+  if fn == ``dite && args.size == 5 && isNatTy args[0]! then
+    let br (b : Expr) : TrM Expr := do
+      match b.consumeMData with
+      | .lam _ _ body _ => if body.hasLooseBVar 0 then bail "dependent if-then-else" else pure (body.lowerLooseBVars 1 1)
+      | _ => bail "dependent if-then-else"
+    return .ite (← trProp c args[1]!) (← tr c (← br args[3]!)) (← tr c (← br args[4]!))
   -- MathIR v3 builtins (exact semantics re-checked against the compiled corpus by the fidelity check)
   if fn == ``id && args.size == 2 then return ← tr c args[1]!
   if fn == `Nat.fib && args.size == 1 then return .prim "fib" [← tr c args[0]!]
@@ -263,10 +284,18 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if fn == `Finset.sup && args.size == 6 then
     unless isNatTy args[0]! && isNatTy args[1]! do bail "Finset.sup over a non-ℕ type"
     let id ← fresh c
-    let (lo, hi, incl, filt) ← source c id args[4]!
+    let (lo, hi, incl, filt, elem) ← source c id args[4]!
     let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
-      tr { c with loops := c.loops.push (x, id) } (args[5]!.beta #[x])
+      tr { c with loops := c.loops.push (x, id) } (args[5]!.beta #[elem.beta #[x]])
     return .fold "max" id lo hi incl filt body
+  -- Finset.lcm f over a ℕ source, into ℕ (lcm ∅ = 1; normalize is the identity on ℕ)
+  if fn == `Finset.lcm && args.size == 6 then
+    unless isNatTy args[0]! && isNatTy args[1]! do bail "Finset.lcm over a non-ℕ type"
+    let id ← fresh c
+    let (lo, hi, incl, filt, elem) ← source c id args[4]!
+    let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := c.loops.push (x, id) } (args[5]!.beta #[elem.beta #[x]])
+    return .fold "lcm" id lo hi incl filt body
   -- if-then-else on a decidable predicate
   if fn == ``ite && args.size == 5 then
     unless isNatTy args[0]! do bail "ite at a non-ℕ type"
@@ -275,15 +304,15 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if (fn == `Finset.sum || fn == `Finset.prod) && args.size == 5 then
     unless isNatTy args[0]! && isNatTy args[1]! do bail s!"{fn} over a non-ℕ type"
     let id ← fresh c
-    let (lo, hi, incl, filt) ← source c id args[3]!
+    let (lo, hi, incl, filt, elem) ← source c id args[3]!
     let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
-      tr { c with loops := c.loops.push (x, id) } (args[4]!.beta #[x])
+      tr { c with loops := c.loops.push (x, id) } (args[4]!.beta #[elem.beta #[x]])
     return .fold (if fn == `Finset.sum then "sum" else "prod") id lo hi incl filt body
   -- Finset.card of a (filtered) ℕ range
   if fn == `Finset.card && args.size == 2 then
     unless isNatTy args[0]! do bail "Finset.card over a non-ℕ type"
     let id ← fresh c
-    let (lo, hi, incl, filt) ← source c id args[1]!
+    let (lo, hi, incl, filt, _) ← source c id args[1]!
     return .fold "count" id lo hi incl filt (.lit 1)
   -- recursive call
   if fn == c.self then
@@ -335,10 +364,12 @@ partial def trProp (c : Ctx) (p : Expr) : TrM E := do
   | ``Eq, #[ty, a, b] =>
     if isNatTy ty then return .cmp "eq" (← tr c a) (← tr c b)
     else if isIntTy ty then return .cmp "ieq" (← trI c a) (← trI c b)
+    else if ty.isConstOf ``Bool then return .cmp "eq" (← trBool c a) (← trBool c b)
     else bail "equality at a non-ℕ type"
   | ``Ne, #[ty, a, b] =>
     if isNatTy ty then return .not (.cmp "eq" (← tr c a) (← tr c b))
     else if isIntTy ty then return .not (.cmp "ieq" (← trI c a) (← trI c b))
+    else if ty.isConstOf ``Bool then return .not (.cmp "eq" (← trBool c a) (← trBool c b))
     else bail "≠ at a non-ℕ type"
   | ``Not, #[q] => return .not (← trProp c q)
   | ``And, #[q, r] => return .and (← trProp c q) (← trProp c r)
@@ -349,6 +380,31 @@ partial def trProp (c : Ctx) (p : Expr) : TrM E := do
   | `Even, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 0) else bail "Even at a non-ℕ type"
   | `Odd, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 1) else bail "Odd at a non-ℕ type"
   | _, _ => bail s!"unsupported predicate: {fn}"
+
+/-- Translate a `Bool` to a 0 / 1 expression. -/
+partial def trBool (c : Ctx) (b : Expr) : TrM E := do
+  let b := b.consumeMData
+  if let .letE _ _ v body _ := b then return ← trBool c (body.instantiate1 v)
+  if b.isApp && b.getAppFn.isLambda then return ← trBool c b.headBeta
+  if b.isConstOf ``Bool.true then return .lit 1
+  if b.isConstOf ``Bool.false then return .lit 0
+  let (fn, args) := b.getAppFnArgs
+  match fn, args with
+  | ``Decidable.decide, #[p, _] => trProp c p
+  | ``and, #[x, y] => return .and (← trBool c x) (← trBool c y)
+  | ``or, #[x, y] => return .or (← trBool c x) (← trBool c y)
+  | ``not, #[x] => return .not (← trBool c x)
+  | ``Nat.testBit, #[n, i] =>
+    -- testBit n i ↔ (n / 2^i) % 2 = 1  (the wide fallback covers i ≥ 64)
+    return .cmp "eq" (.bin "mod" (.bin "div" (← tr c n) (.bin "pow" (.lit 2) (← tr c i))) (.lit 2)) (.lit 1)
+  | ``BEq.beq, #[ty, _, x, y] =>
+    if isNatTy ty then return .cmp "eq" (← tr c x) (← tr c y) else bail "== at a non-ℕ type"
+  | ``bne, #[ty, _, x, y] =>
+    if isNatTy ty then return .not (.cmp "eq" (← tr c x) (← tr c y)) else bail "!= at a non-ℕ type"
+  | ``Nat.ble, #[x, y] => return .cmp "le" (← tr c x) (← tr c y)
+  | ``Nat.blt, #[x, y] => return .cmp "lt" (← tr c x) (← tr c y)
+  | ``Nat.beq, #[x, y] => return .cmp "eq" (← tr c x) (← tr c y)
+  | _, _ => bail s!"unsupported (Bool): {fn}"
 
 /-- Translate a ℤ-valued expression (ℤ subterms enter from ℕ via casts / literals and leave via
 `toNat`, `natAbs` or a comparison). -/
@@ -384,9 +440,9 @@ partial def trI (c : Ctx) (e : Expr) : TrM E := do
   -- ∑ / ∏ of ℤ over a ℕ source (`Finset.sum {ι M} [AddCommMonoid M] s f`: index type first)
   if (fn == `Finset.sum || fn == `Finset.prod) && args.size == 5 && isNatTy args[0]! && isIntTy args[1]! then
     let id ← fresh c
-    let (lo, hi, incl, filt) ← source c id args[3]!
+    let (lo, hi, incl, filt, elem) ← source c id args[3]!
     let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
-      trI { c with loops := c.loops.push (x, id) } (args[4]!.beta #[x])
+      trI { c with loops := c.loops.push (x, id) } (args[4]!.beta #[elem.beta #[x]])
     return .fold (if fn == `Finset.sum then "isum" else "iprod") id lo hi incl filt body
   -- a non-recursive ℤ-valued helper ℕ^k → ℤ: inline its body (bounded depth). A recursive one
   -- elaborates to a recursor / WellFounded.fix and is rejected while translating the body.
@@ -401,35 +457,58 @@ partial def trI (c : Ctx) (e : Expr) : TrM E := do
       if ok then return ← trI { c with depth := c.depth + 1 } (v.beta args)
   bail s!"unsupported (ℤ): {fn}"
 
-/-- A finite ℕ range, optionally filtered: `(lo, hi, inclusive, filter)`; the filter is a boolean
-expression over loop variable `id`. -/
-partial def source (c : Ctx) (id : Nat) (s : Expr) : TrM (E × E × Bool × E) := do
+/-- A finite set of ℕ enumerated by a loop: `(lo, hi, inclusive, filter, elem)`. The loop counter
+runs over [lo, hi] / [lo, hi) in increasing order; `filter` is a boolean expression over loop
+variable `id`; `elem : ℕ → ℕ` (a Lean lambda) maps the counter to the set element. Every source
+enumerates each element at most once (an image keeps only the first occurrence), so sums,
+products and counts over it are the Finset ones. -/
+partial def source (c : Ctx) (id : Nat) (s : Expr) : TrM (E × E × Bool × E × Expr) := do
   let s := s.consumeMData
   let (fn, args) := s.getAppFnArgs
   if fn == `Finset.range && args.size == 1 then
-    return (.lit 0, ← tr c args[0]!, false, .lit 1)
+    return (.lit 0, ← tr c args[0]!, false, .lit 1, idElem)
   if (fn == `Finset.Icc || fn == `Finset.Ico || fn == `Finset.Ioc || fn == `Finset.Ioo) && args.size ≥ 3 then
     unless isNatTy args[0]! do bail s!"{fn} over a non-ℕ type"
     let a ← tr c args[args.size - 2]!
     let b ← tr c args[args.size - 1]!
     let lo := if fn == `Finset.Ioc || fn == `Finset.Ioo then .bin "add" a (.lit 1) else a
     let incl := fn == `Finset.Icc || fn == `Finset.Ioc
-    return (lo, b, incl, .lit 1)
+    return (lo, b, incl, .lit 1, idElem)
   if fn == `Finset.filter && args.size == 4 then
     unless isNatTy args[0]! do bail "Finset.filter over a non-ℕ type"
-    let (lo, hi, incl, f0) ← source c id args[3]!
+    let (lo, hi, incl, f0, elem) ← source c id args[3]!
     let f1 ← withLocalDeclD `k (mkConst ``Nat) fun x =>
-      trProp { c with loops := c.loops.push (x, id) } (args[1]!.beta #[x])
+      trProp { c with loops := c.loops.push (x, id) } (args[1]!.beta #[elem.beta #[x]])
     let filt := match f0 with | .lit 1 => f1 | _ => .and f0 f1
-    return (lo, hi, incl, filt)
+    return (lo, hi, incl, filt, elem)
   -- divisors n = {d ∈ Ico 1 (n + 1) | d ∣ n};  properDivisors n = {d ∈ Ico 1 n | d ∣ n}
-  -- primeFactors n = the primes dividing n (∅ for n = 0)
+  -- primeFactors n = the primes dividing n (∅ for n = 0);  primesBelow n = {p ∈ range n | p.Prime}
   if (fn == `Nat.divisors || fn == `Nat.properDivisors || fn == `Nat.primeFactors) && args.size == 1 then
     let n ← tr c args[0]!
     let dv := E.prim "dvd" [.lvar id, n]
-    if fn == `Nat.divisors then return (.lit 1, n, true, dv)
-    if fn == `Nat.properDivisors then return (.lit 1, n, false, dv)
-    return (.lit 1, n, true, .and dv (.prim "prime" [.lvar id]))
+    if fn == `Nat.divisors then return (.lit 1, n, true, dv, idElem)
+    if fn == `Nat.properDivisors then return (.lit 1, n, false, dv, idElem)
+    return (.lit 1, n, true, .and dv (.prim "prime" [.lvar id]), idElem)
+  if fn == `Nat.primesBelow && args.size == 1 then
+    return (.lit 0, ← tr c args[0]!, false, .prim "prime" [.lvar id], idElem)
+  -- image f s (ℕ → ℕ): enumerate s, map by f, keep an element only at its first occurrence
+  -- (no earlier counter value of s with the same image)
+  if fn == `Finset.image && args.size == 5 then
+    unless isNatTy args[0]! && isNatTy args[1]! do bail "Finset.image over a non-ℕ type"
+    let f := args[3]!
+    let (lo, hi, incl, f0, e0) ← source c id args[4]!
+    let elem : Expr := .lam `k (mkConst ``Nat) (.app f (.app e0 (.bvar 0))) .default
+    let id' ← fresh c
+    let (lo', _, _, f0', e0') ← source c id' args[4]!
+    let elem' : Expr := .lam `k (mkConst ``Nat) (.app f (.app e0' (.bvar 0))) .default
+    let eK ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := c.loops.push (x, id) } (elem.beta #[x])
+    let eJ ← withLocalDeclD `k (mkConst ``Nat) fun y =>
+      tr { c with loops := c.loops.push (y, id') } (elem'.beta #[y])
+    let earlier := E.fold "count" id' lo' (.lvar id) false (.and f0' (.cmp "eq" eJ eK)) (.lit 1)
+    let first := E.cmp "eq" earlier (.lit 0)
+    let filt := match f0 with | .lit 1 => first | _ => .and f0 first
+    return (lo, hi, incl, filt, elem)
   bail s!"unsupported Finset source: {fn}"
 
 end
@@ -625,7 +704,7 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
     let h ← cExpr sym ind hi
     let t ← freshC
     let v := s!"v{id}"
-    emitC s!"{ind}uint64_t {t} = {if op == "prod" then "1ULL" else "0ULL"};"
+    emitC s!"{ind}uint64_t {t} = {if op == "prod" || op == "lcm" then "1ULL" else "0ULL"};"
     emitC s!"{ind}if ({l} {if incl then "<=" else "<"} {h}) \{"
     emitC s!"{ind}  uint64_t {v} = {l};"
     emitC s!"{ind}  for (;;) \{"
@@ -640,7 +719,7 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
       emitC s!"{ind3}if ({b} > {t}) {t} = {b};"
     else
       let b ← cExpr sym ind3 body
-      emitC s!"{ind3}if (lm2_{if op == "prod" then "mul" else "add"}({t}, {b}, &{t})) return LM2_OVERFLOW;"
+      emitC s!"{ind3}if (lm2_{if op == "prod" then "mul" else if op == "lcm" then "lcm" else "add"}({t}, {b}, &{t})) return LM2_OVERFLOW;"
     emitC s!"{ind2}}"
     emitC s!"{ind2}if ({if incl then s!"{v} == {h}" else s!"{v} + 1ULL == {h}"}) break;"
     emitC s!"{ind2}{v}++;"
@@ -852,7 +931,7 @@ partial def cExprW (sym : Name → String) (ind : String) : E → CGM String
     -- loop bounds beyond 64 bits would never finish within any budget: fail (sound)
     emitC s!"{ind}uint64_t {lb}, {hb};"
     emitC s!"{ind}if (lm2w_get(&{l}, &{lb}) || lm2w_get(&{h}, &{hb})) return LM2_OVERFLOW;"
-    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, {if op == "prod" then "1u" else "0u"});"
+    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, {if op == "prod" || op == "lcm" then "1u" else "0u"});"
     emitC s!"{ind}if ({lb} {if incl then "<=" else "<"} {hb}) \{"
     emitC s!"{ind}  uint64_t {v} = {lb};"
     emitC s!"{ind}  for (;;) \{"
@@ -868,7 +947,7 @@ partial def cExprW (sym : Name → String) (ind : String) : E → CGM String
       emitC s!"{ind3}if (lm2w_cmp(&{b}, &{t}) > 0) {t} = {b};"
     else
       let b ← cExprW sym ind3 body
-      emitC s!"{ind3}if (lm2w_{if op == "prod" then "mul" else "add"}(&{t}, &{b}, &{t})) return LM2_OVERFLOW;"
+      emitC s!"{ind3}if (lm2w_{if op == "prod" then "mul" else if op == "lcm" then "lcm" else "add"}(&{t}, &{b}, &{t})) return LM2_OVERFLOW;"
     emitC s!"{ind2}}"
     emitC s!"{ind2}if ({if incl then s!"{v} == {hb}" else s!"{v} + 1ULL == {hb}"}) break;"
     emitC s!"{ind2}{v}++;"
@@ -1018,7 +1097,7 @@ def m2Prim : String → String
   | "min" => "Min" | "max" => "Max" | "gcd" => "Gcd" | "lcm" => "Lcm" | "fact" => "Fact"
   | "choose" => "Choose" | "sqrt" => "Sqrt" | "minfac" => "MinFac" | "prime" => "IsPrime"
   | "fib" => "Fib" | "log" => "Log" | "log2" => "Log2" | "padic" => "PadicVal" | "bigomega" => "BigOmega"
-  | "digsum" => "DigSum" | "diglen" => "DigLen" | "digrev" => "DigRev" | _ => "Dvd"
+  | "digsum" => "DigSum" | "diglen" => "DigLen" | "digrev" => "DigRev" | "xor" => "Xor" | _ => "Dvd"
 
 mutual
 partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
@@ -1096,7 +1175,7 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
     let t ← freshM
     let v := s!"v{id}"
     declM v
-    emitM s!"{ind}{t} := {if op == "prod" then "1" else "0"};"
+    emitM s!"{ind}{t} := {if op == "prod" || op == "lcm" then "1" else "0"};"
     emitM s!"{ind}IF {l} {if incl then "<=" else "<"} {h} THEN"
     emitM s!"{ind}  {v} := {l};"
     emitM s!"{ind}  LOOP"
@@ -1111,7 +1190,7 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
       emitM s!"{ind3}IF {b} > {t} THEN {t} := {b} END"
     else
       let b ← mExpr sym ind3 body
-      emitM s!"{ind3}IF LM2Nat.{if op == "prod" then "Mul" else "Add"}({t}, {b}, {t}) THEN RETURN Overflow END"
+      emitM s!"{ind3}IF LM2Nat.{if op == "prod" then "Mul" else if op == "lcm" then "Lcm" else "Add"}({t}, {b}, {t}) THEN RETURN Overflow END"
     emitM s!"{ind2}END;"
     emitM s!"{ind2}IF {if incl then s!"{v} = {h}" else s!"{v} + 1 = {h}"} THEN EXIT END;"
     emitM s!"{ind2}INC({v})"
@@ -1235,6 +1314,7 @@ def m2Wide : String → String
   | "choose" => "Choose" | "sqrt" => "Sqrt" | "minfac" => "MinFac" | "prime" => "Prime"
   | "bigomega" => "BigOmega" | "dvd" => "Dvd" | "fib" => "Fib" | "log" => "Log" | "log2" => "Log2"
   | "padic" => "Padic" | "digsum" => "DigSum" | "diglen" => "DigLen" | "digrev" => "DigRev"
+  | "xor" => "Xor"
   | op => s!"ILLTYPED_{op}"
 
 mutual
@@ -1323,7 +1403,7 @@ partial def mExprW (sym : Name → String) (ind : String) : E → MGM String
     let v := s!"v{id}"
     declM v
     emitM s!"{ind}IF LM2Wide.Get({l}, {lb}) OR LM2Wide.Get({h}, {hb}) THEN RETURN Overflow END;"
-    emitM s!"{ind}LM2Wide.Set({t}, {if op == "prod" then "1" else "0"}); LM2Wide.Set({one}, 1);"
+    emitM s!"{ind}LM2Wide.Set({t}, {if op == "prod" || op == "lcm" then "1" else "0"}); LM2Wide.Set({one}, 1);"
     emitM s!"{ind}IF {lb} {if incl then "<=" else "<"} {hb} THEN"
     emitM s!"{ind}  {v} := {lb};"
     emitM s!"{ind}  LOOP"
@@ -1336,9 +1416,9 @@ partial def mExprW (sym : Name → String) (ind : String) : E → MGM String
     else if op == "max" then
       let b ← mExprW sym ind3 body
       emitM s!"{ind3}IF LM2Wide.Cmp({b}, {t}) > 0 THEN {t} := {b} END"
-    else if op == "sum" || op == "prod" then
+    else if op == "sum" || op == "prod" || op == "lcm" then
       let b ← mExprW sym ind3 body
-      emitM s!"{ind3}IF LM2Wide.{if op == "prod" then "Mul" else "Add"}({t}, {b}, {t}) THEN RETURN Overflow END"
+      emitM s!"{ind3}IF LM2Wide.{if op == "prod" then "Mul" else if op == "lcm" then "Lcm" else "Add"}({t}, {b}, {t}) THEN RETURN Overflow END"
     else
       emitM "ILL-TYPED MathIR integer fold (deliberate syntax error: fail closed)"
     emitM s!"{ind2}END;"
@@ -1638,6 +1718,7 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     | "prime" => if a > 2 ^ 20 then throw "prime budget" else pure (b2n (a ≥ 2 && minFacN a == a))
     -- Mathlib's `Nat.fib` iterates n times; past fib 6000 the value exceeds 2^4096 anyway
     | "fib" => if a > 6000 then throw "size budget" else chk b (fibN a)
+    | "xor" => pure (a ^^^ c)
     | "log" => pure (logN a c)
     | "log2" => pure (logN 2 a)
     | "padic" => pure (padicN a c)
@@ -1668,7 +1749,7 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     let l ← evalE b defs args i w lv lo
     let h ← evalE b defs args i w lv hi
     let stop := if incl then h + 1 else h
-    let mut acc := if op == "prod" then 1 else 0
+    let mut acc := if op == "prod" || op == "lcm" then 1 else 0
     let mut k := l
     while k < stop do
       tick b
@@ -1677,7 +1758,8 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
         if op == "count" then acc := acc + 1
         else
           let v ← evalE b defs args i w lv' body
-          acc ← chk b (if op == "prod" then acc * v else if op == "max" then max acc v else acc + v)
+          acc ← chk b (if op == "prod" then acc * v else if op == "max" then max acc v
+            else if op == "lcm" then Nat.lcm acc v else acc + v)
       k := k + 1
     return acc
   | .call f xs => do

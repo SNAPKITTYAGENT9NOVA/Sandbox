@@ -177,6 +177,9 @@ def fresh (c : Ctx) : TrM Nat := do
   c.ctr.set (n + 1)
   return n
 
+/-- The identity `fun k : ℕ => k`: the element of a plain range is its loop counter. -/
+def idElem : Expr := .lam `k (mkConst ``Nat) (.bvar 0) .default
+
 mutual
 
 /-- Translate a ℕ-valued expression. -/
@@ -453,9 +456,6 @@ partial def trI (c : Ctx) (e : Expr) : TrM E := do
         return true
       if ok then return ← trI { c with depth := c.depth + 1 } (v.beta args)
   bail s!"unsupported (ℤ): {fn}"
-
-/-- The identity `fun k : ℕ => k`: the element of a plain range is its loop counter. -/
-def idElem : Expr := .lam `k (mkConst ``Nat) (.bvar 0) .default
 
 /-- A finite set of ℕ enumerated by a loop: `(lo, hi, inclusive, filter, elem)`. The loop counter
 runs over [lo, hi] / [lo, hi) in increasing order; `filter` is a boolean expression over loop

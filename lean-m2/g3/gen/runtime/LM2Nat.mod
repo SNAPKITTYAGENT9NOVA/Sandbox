@@ -328,4 +328,18 @@ BEGIN
   r := acc; RETURN FALSE
 END IPow;
 
+PROCEDURE Xor (a, b: LONGCARD) : LONGCARD;
+VAR
+  r, p, x, y: LONGCARD; i: CARDINAL;
+BEGIN
+  r := 0; p := 1; x := a; y := b; i := 0;
+  WHILE i < 64 DO
+    IF ODD(x) # ODD(y) THEN r := r + p END;
+    x := x DIV 2; y := y DIV 2;
+    IF i < 63 THEN p := p * 2 END;
+    INC(i)
+  END;
+  RETURN r
+END Xor;
+
 END LM2Nat.

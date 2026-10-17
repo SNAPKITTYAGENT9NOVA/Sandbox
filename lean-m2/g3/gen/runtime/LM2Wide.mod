@@ -491,6 +491,28 @@ BEGIN
   r := acc; RETURN FALSE
 END DigRev;
 
+PROCEDURE XorLimb (a, b: CARDINAL) : CARDINAL;
+VAR
+  r, p: LONGCARD; x, y, i: CARDINAL;
+BEGIN
+  r := 0; p := 1; x := a; y := b; i := 0;
+  WHILE i < 32 DO
+    IF ODD(x) # ODD(y) THEN r := r + p END;
+    x := x DIV 2; y := y DIV 2; p := p * 2; INC(i)
+  END;
+  RETURN VAL(CARDINAL, r)
+END XorLimb;
+
+PROCEDURE Xor (VAR a, b, r: Wide) : BOOLEAN;
+VAR
+  t: Wide; i, m: CARDINAL;
+BEGIN
+  IF a.n > b.n THEN m := a.n ELSE m := b.n END;
+  i := 0;
+  WHILE i < m DO t.d[i] := XorLimb(VAL(CARDINAL, Limb(a, i)), VAL(CARDINAL, Limb(b, i))); INC(i) END;
+  t.n := m; Norm(t); r := t; RETURN FALSE
+END Xor;
+
 (* ---- ℤ (sign-magnitude) ---- *)
 
 PROCEDURE Fix (VAR a: WInt);

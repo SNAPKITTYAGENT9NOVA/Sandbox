@@ -213,4 +213,7 @@ static int lm2_ipow(int64_t a, uint64_t e, int64_t *r) {
   }
   *r = acc; return 0;
 }
+/* ---- MathIR v5 ---- */
+/* Nat.xor: bitwise exclusive or */
+static uint64_t lm2_xor(uint64_t a, uint64_t b) { return a ^ b; }
 #endif

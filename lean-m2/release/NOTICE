@@ -1,0 +1,16 @@
+LEAN-M2-CC-001 release package — notices
+
+Source definitions
+  The functions in this package are translations of definitions from
+  google-deepmind/formal-conjectures (Apache License 2.0), at the commit recorded in
+  evidence/corpus.lock.yaml. Their meaning depends on Mathlib (Apache License 2.0) definitions.
+  The translations are machine-generated; see evidence/ for how each was checked.
+
+Toolchain
+  C objects were compiled with CompCert 3.18 (AbsInt / INRIA); Modula-2 objects with GNU Modula-2
+  (GCC). Those compilers are distributed under their own licenses; this package contains only
+  their output, not the compilers or the gm2 runtime libraries (link against your installed gm2).
+
+License of this package's own code
+  The repository that produced this package does not currently declare a license. Until it does,
+  no license to the generated runtime and glue code is granted by this notice.

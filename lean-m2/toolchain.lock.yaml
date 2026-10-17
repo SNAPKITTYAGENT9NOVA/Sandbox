@@ -28,7 +28,7 @@ lean:
 
 mathir:
   schema_version: "1.0.0"
-  canonical_serialization: REQUIRED
+  canonical_serialization: "mathir.json = Lean Json.pretty, UTF-8, trailing LF; byte-reproducibility enforced by gen.sha256 across CI jobs and by the release gate"
   stable_declaration_ids: true
   preserve_source_locations: true
   preserve_dependencies: true

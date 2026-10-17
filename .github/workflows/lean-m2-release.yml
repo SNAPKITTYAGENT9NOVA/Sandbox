@@ -1,0 +1,97 @@
+name: lean-m2 release (G6 gate)
+
+# LEAN-M2-CC-001 G6: rebuild everything from this commit, verify every gate fail-closed, and package.
+#   - workflow_dispatch: produces the package as a workflow artifact (no release is created).
+#   - release published (by a maintainer): the same, then attaches the package to that release.
+# The gate (lean-m2/release/gate.py) writes the package only if every check passes.
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  pull_request:            # prove the gate on changes to the gate itself (packages as an artifact only)
+    paths: ['lean-m2/release/**', 'lean-m2/scripts/measure-toolchain.sh', 'lean-m2/toolchain.lock.yaml',
+            '.github/workflows/lean-m2-release.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-m2-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mathir:
+    uses: ./.github/workflows/lean-m2-mathir.yml
+
+  gate:
+    needs: mathir
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    permissions:
+      contents: write          # only used to attach assets when triggered by a published release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mathir-lean
+          path: lean-evidence
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mathir-arm
+          path: arm-out
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build toolchain image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: lean-m2
+          file: lean-m2/docker/Dockerfile
+          platforms: linux/arm64
+          load: true
+          tags: lean-m2-workstation:release
+          cache-from: type=gha,scope=lean-m2
+          cache-to: type=gha,scope=lean-m2,mode=max
+
+      - name: Measure the toolchain inside the image
+        run: |
+          docker run --rm --platform linux/arm64 -v "$PWD/lean-m2:/lm2:ro" lean-m2-workstation:release \
+            bash /lm2/scripts/measure-toolchain.sh > toolchain.observed.tsv
+          cat toolchain.observed.tsv
+
+      - name: Gate and package
+        id: gate
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install --user pyyaml==6.0.2
+          if [ "${{ github.event_name }}" = release ]; then V="${{ github.event.release.tag_name }}"; else V="0.0.0-dev+${GITHUB_SHA::12}"; fi
+          V="${V#v}"
+          python3 lean-m2/release/gate.py --repo lean-m2 --lean lean-evidence --arm arm-out \
+            --observed toolchain.observed.tsv --version "$V" --commit "$GITHUB_SHA" --run "$GITHUB_RUN_ID" --dist dist
+
+      - name: Publish gate report as annotations
+        if: always()
+        run: |
+          A=lean-m2/scripts/annotate.sh
+          [ -f toolchain.observed.tsv ] && $A notice "Measured toolchain" toolchain.observed.tsv 40
+          [ -f lean-evidence/lake-version.txt ] && $A notice "Measured lake version" lean-evidence/lake-version.txt 3
+          [ -f dist/gate-report.txt ] && $A notice "Release gate report" dist/gate-report.txt 200
+          grep -h '^BLOCKED' dist/gate-report.txt > blocked.txt 2>/dev/null && [ -s blocked.txt ] && $A error "Release gate BLOCKED" blocked.txt 60
+          [ -f dist/SHA256SUMS ] && $A notice "Release package" dist/SHA256SUMS 5
+          true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lean-m2-release
+          path: |
+            dist/
+            toolchain.observed.tsv
+
+      - name: Attach to the published release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.tar.gz dist/SHA256SUMS dist/gate-report.txt --clobber

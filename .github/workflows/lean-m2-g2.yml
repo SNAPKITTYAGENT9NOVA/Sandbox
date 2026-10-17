@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 name: lean-m2 G2 (Lean validation + axiom ledger)
 
 # Gate G2 of LEAN-M2-CC-001 on the frozen corpus (lean-m2/corpus.lock.yaml).

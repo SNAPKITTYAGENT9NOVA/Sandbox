@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) -->
 # LEAN-M2-CC-001 release package
 
 Natural-number functions from the Lean 4 corpus
@@ -43,5 +45,7 @@ the frozen lockfile; the corpus gates G1/G2 pass; the IR agrees with Lean's comp
 on every evaluated input; the C and Modula-2 code are sound and complete on every Lean reference
 case; SLICE-001's acceptance test passes on the generated code; and every compiled object is
 byte-identical to the one recorded in the ledger.
+
+**License:** AGPL-3.0-only (see `LICENSE` and `NOTICE`).
 
 **Not claimed:** formal equivalence. Testing covers finite input sets (see `limits` in the manifest).

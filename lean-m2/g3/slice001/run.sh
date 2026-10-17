@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 # LEAN-M2-CC-001 SLICE-001: build with the locked toolchain and run the differential test.
 # Runs INSIDE the AArch64 workstation image (CompCert 3.18 + gm2).
 # usage: run.sh <slice-dir> <lm2_cases.c from Spec.lean> <out-dir>

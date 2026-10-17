@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
+# Licensing of files that cannot carry a comment header (REUSE specification 3.x).
+version = 1
+
+[[annotations]]
+path = ["**/*.json"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 SNAPKITTYWEST (Sovereign Kernel Project)"
+SPDX-License-Identifier = "AGPL-3.0-only"

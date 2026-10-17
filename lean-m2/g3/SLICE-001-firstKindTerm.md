@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) -->
 # SLICE-001: `CunninghamChain.firstKindTerm`
 
 This is the first vertical slice of LEAN-M2-CC-001 (contract §14): one computational definition

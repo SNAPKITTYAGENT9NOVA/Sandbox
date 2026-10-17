@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 # Publish text as GitHub check-run annotations (readable via the REST API, unlike job logs).
 # usage: annotate.sh <notice|warning|error> <title> <file> [max-lines]
 # GitHub truncates an annotation message at about 4 KB, so longer text is split at line

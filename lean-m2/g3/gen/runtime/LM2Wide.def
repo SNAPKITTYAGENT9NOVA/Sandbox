@@ -14,6 +14,7 @@ TYPE
   Digits = ARRAY [0..Limbs - 1] OF CARDINAL;
   Wide = RECORD n: CARDINAL; d: Digits END;          (* n used limbs, d[n-1] # 0; 0 has n = 0 *)
   WInt = RECORD neg: BOOLEAN; m: Wide END;           (* sign-magnitude; 0 is never negative *)
+  WRat = RECORD num: WInt; den: Wide END;            (* lowest terms, den > 0; 0 = 0/1 *)
 
 PROCEDURE Set (VAR r: Wide; x: LONGCARD);
 PROCEDURE Get (VAR a: Wide; VAR x: LONGCARD) : BOOLEAN;   (* TRUE iff a >= 2^64 *)
@@ -56,5 +57,18 @@ PROCEDURE IPow (VAR a: WInt; VAR e: Wide; VAR r: WInt) : BOOLEAN;
 PROCEDURE IToNat (VAR a: WInt; VAR r: Wide) : BOOLEAN;
 PROCEDURE INatAbs (VAR a: WInt; VAR r: Wide) : BOOLEAN;
 PROCEDURE ICmp (VAR a, b: WInt) : INTEGER;
+
+(* ℚ (MathIR v6): Lean semantics x / 0 = 0, 0⁻¹ = 0; ℚ subterms run only on this exact path *)
+PROCEDURE QOfNat (VAR a: Wide; VAR r: WRat) : BOOLEAN;
+PROCEDURE QOfInt (VAR a: WInt; VAR r: WRat) : BOOLEAN;
+PROCEDURE QAdd (VAR a, b, r: WRat) : BOOLEAN;
+PROCEDURE QSub (VAR a, b, r: WRat) : BOOLEAN;
+PROCEDURE QMul (VAR a, b, r: WRat) : BOOLEAN;
+PROCEDURE QDiv (VAR a, b, r: WRat) : BOOLEAN;
+PROCEDURE QNeg (VAR a, r: WRat) : BOOLEAN;
+PROCEDURE QInv (VAR a, r: WRat) : BOOLEAN;
+PROCEDURE QPow (VAR a: WRat; VAR e: Wide; VAR r: WRat) : BOOLEAN;
+PROCEDURE QNum (VAR a: WRat; VAR r: WInt) : BOOLEAN;
+PROCEDURE QDen (VAR a: WRat; VAR r: Wide) : BOOLEAN;
 
 END LM2Wide.

@@ -599,4 +599,104 @@ BEGIN
   IF a.neg THEN RETURN -Cmp(a.m, b.m) ELSE RETURN Cmp(a.m, b.m) END
 END ICmp;
 
+(* ---- ℚ (MathIR v6) ---- *)
+
+PROCEDURE QNorm (VAR q: WRat) : BOOLEAN;
+VAR
+  g, one: Wide;
+BEGIN
+  IF q.den.n = 0 THEN RETURN TRUE END;          (* never produced; fail closed *)
+  Set(one, 1);
+  IF q.num.m.n = 0 THEN q.num.neg := FALSE; q.den := one; RETURN FALSE END;
+  IF Gcd(q.num.m, q.den, g) THEN END;
+  IF Cmp(g, one) # 0 THEN
+    IF Div(q.num.m, g, q.num.m) OR Div(q.den, g, q.den) THEN END
+  END;
+  RETURN FALSE
+END QNorm;
+
+PROCEDURE QOfNat (VAR a: Wide; VAR r: WRat) : BOOLEAN;
+VAR
+  t: WRat;
+BEGIN
+  t.num.m := a; t.num.neg := FALSE; Set(t.den, 1); r := t; RETURN FALSE
+END QOfNat;
+
+PROCEDURE QOfInt (VAR a: WInt; VAR r: WRat) : BOOLEAN;
+VAR
+  t: WRat;
+BEGIN
+  t.num := a; Set(t.den, 1); r := t; RETURN FALSE
+END QOfInt;
+
+PROCEDURE QAdd (VAR a, b, r: WRat) : BOOLEAN;
+VAR
+  t: WRat; x, y, ad, bd: WInt;
+BEGIN
+  ad.neg := FALSE; ad.m := a.den; bd.neg := FALSE; bd.m := b.den;
+  IF IMul(a.num, bd, x) OR IMul(b.num, ad, y) OR IAdd(x, y, t.num) THEN RETURN TRUE END;
+  IF Mul(a.den, b.den, t.den) THEN RETURN TRUE END;
+  IF QNorm(t) THEN RETURN TRUE END;
+  r := t; RETURN FALSE
+END QAdd;
+
+PROCEDURE QNeg (VAR a, r: WRat) : BOOLEAN;
+VAR
+  t: WRat;
+BEGIN
+  t := a; t.num.neg := NOT t.num.neg; Fix(t.num); r := t; RETURN FALSE
+END QNeg;
+
+PROCEDURE QSub (VAR a, b, r: WRat) : BOOLEAN;
+VAR
+  nb: WRat;
+BEGIN
+  IF QNeg(b, nb) THEN END;
+  RETURN QAdd(a, nb, r)
+END QSub;
+
+PROCEDURE QMul (VAR a, b, r: WRat) : BOOLEAN;
+VAR
+  t: WRat;
+BEGIN
+  IF IMul(a.num, b.num, t.num) OR Mul(a.den, b.den, t.den) THEN RETURN TRUE END;
+  IF QNorm(t) THEN RETURN TRUE END;
+  r := t; RETURN FALSE
+END QMul;
+
+PROCEDURE QInv (VAR a, r: WRat) : BOOLEAN;
+VAR
+  t: WRat; zero: Wide;
+BEGIN
+  IF a.num.m.n = 0 THEN zero.n := 0; RETURN QOfNat(zero, r) END;
+  t.num.m := a.den; t.num.neg := a.num.neg; t.den := a.num.m;   (* already coprime *)
+  r := t; RETURN FALSE
+END QInv;
+
+PROCEDURE QDiv (VAR a, b, r: WRat) : BOOLEAN;
+VAR
+  ib: WRat;
+BEGIN
+  IF QInv(b, ib) THEN END;
+  RETURN QMul(a, ib, r)
+END QDiv;
+
+PROCEDURE QPow (VAR a: WRat; VAR e: Wide; VAR r: WRat) : BOOLEAN;
+VAR
+  t: WRat;
+BEGIN
+  IF IPow(a.num, e, t.num) OR Pow(a.den, e, t.den) THEN RETURN TRUE END;
+  r := t; RETURN FALSE                           (* num^e / den^e stays coprime *)
+END QPow;
+
+PROCEDURE QNum (VAR a: WRat; VAR r: WInt) : BOOLEAN;
+BEGIN
+  r := a.num; RETURN FALSE
+END QNum;
+
+PROCEDURE QDen (VAR a: WRat; VAR r: Wide) : BOOLEAN;
+BEGIN
+  r := a.den; RETURN FALSE
+END QDen;
+
 END LM2Wide.

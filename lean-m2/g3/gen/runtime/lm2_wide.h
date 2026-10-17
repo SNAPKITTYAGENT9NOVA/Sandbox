@@ -328,4 +328,55 @@ static int lm2wi_cmp(const lm2wi *a, const lm2wi *b) {
   if (a->neg != b->neg) return a->neg ? -1 : 1;
   return a->neg ? -lm2w_cmp(&a->m, &b->m) : lm2w_cmp(&a->m, &b->m);
 }
+
+/* ---- ℚ (MathIR v6): normalized fraction num / den, den > 0, gcd(|num|, den) = 1, 0 = 0/1.
+ * Lean semantics: x / 0 = 0, 0⁻¹ = 0. ℚ subterms are evaluated only on this exact path. ---- */
+typedef struct { lm2wi num; lm2w den; } lm2wq;
+
+static int lm2wq_norm(lm2wq *q) {
+  lm2w g, one;
+  if (q->den.n == 0u) return 1;                  /* never produced; fail closed */
+  lm2w_set(&one, 1u);
+  if (q->num.m.n == 0u) { q->num.neg = 0; q->den = one; return 0; }
+  lm2w_gcd(&q->num.m, &q->den, &g);
+  if (lm2w_cmp(&g, &one) != 0) { lm2w_div(&q->num.m, &g, &q->num.m); lm2w_div(&q->den, &g, &q->den); }
+  return 0;
+}
+static int lm2wq_ofnat(const lm2w *a, lm2wq *r) { lm2wq t; t.num.m = *a; t.num.neg = 0; lm2w_set(&t.den, 1u); lm2wi_fix(&t.num); *r = t; return 0; }
+static int lm2wq_ofint(const lm2wi *a, lm2wq *r) { lm2wq t; t.num = *a; lm2w_set(&t.den, 1u); *r = t; return 0; }
+static int lm2wq_add(const lm2wq *a, const lm2wq *b, lm2wq *r) {
+  lm2wq t; lm2wi x, y; lm2wi ad, bd;
+  ad.neg = 0; ad.m = a->den; bd.neg = 0; bd.m = b->den;
+  if (lm2wi_mul(&a->num, &bd, &x) || lm2wi_mul(&b->num, &ad, &y) || lm2wi_add(&x, &y, &t.num)) return 1;
+  if (lm2w_mul(&a->den, &b->den, &t.den)) return 1;
+  if (lm2wq_norm(&t)) return 1;
+  *r = t; return 0;
+}
+static int lm2wq_neg(const lm2wq *a, lm2wq *r) { lm2wq t = *a; t.num.neg = !t.num.neg; lm2wi_fix(&t.num); *r = t; return 0; }
+static int lm2wq_sub(const lm2wq *a, const lm2wq *b, lm2wq *r) { lm2wq nb; lm2wq_neg(b, &nb); return lm2wq_add(a, &nb, r); }
+static int lm2wq_mul(const lm2wq *a, const lm2wq *b, lm2wq *r) {
+  lm2wq t;
+  if (lm2wi_mul(&a->num, &b->num, &t.num) || lm2w_mul(&a->den, &b->den, &t.den)) return 1;
+  if (lm2wq_norm(&t)) return 1;
+  *r = t; return 0;
+}
+static int lm2wq_inv(const lm2wq *a, lm2wq *r) {
+  lm2wq t;
+  if (a->num.m.n == 0u) { lm2w zero; zero.n = 0u; return lm2wq_ofnat(&zero, r); }
+  t.num.m = a->den; t.num.neg = a->num.neg; t.den = a->num.m;
+  *r = t; return 0;                              /* already coprime */
+}
+static int lm2wq_div(const lm2wq *a, const lm2wq *b, lm2wq *r) { lm2wq ib; lm2wq_inv(b, &ib); return lm2wq_mul(a, &ib, r); }
+static int lm2wq_pow(const lm2wq *a, const lm2w *e, lm2wq *r) {
+  lm2wq t;                                       /* num^e / den^e stays coprime */
+  if (lm2wi_pow(&a->num, e, &t.num) || lm2w_pow(&a->den, e, &t.den)) return 1;
+  *r = t; return 0;
+}
+static int lm2wq_num(const lm2wq *a, lm2wi *r) { *r = a->num; return 0; }
+static int lm2wq_den(const lm2wq *a, lm2w *r) { *r = a->den; return 0; }
+static int lm2wq_cmp(const lm2wq *a, const lm2wq *b) {   /* sign of a.num*b.den - b.num*a.den */
+  lm2wi x, y, ad, bd; ad.neg = 0; ad.m = a->den; bd.neg = 0; bd.m = b->den;
+  if (lm2wi_mul(&a->num, &bd, &x) || lm2wi_mul(&b->num, &ad, &y)) return 2;   /* 2 = unknown: caller fails */
+  return lm2wi_cmp(&x, &y);
+}
 #endif

@@ -53,6 +53,8 @@ inductive E where
   | prim (op : String) (args : List E)   -- min max gcd lcm fact choose sqrt minfac fib log log2 padic
                                          -- bigomega digsum diglen digrev | dvd prime (boolean)
                                          -- ℕ→ℤ: ofnat | ℤ→ℤ: ineg isign | ℤ→ℕ: tonat natabs
+                                         -- ℚ (exact path only): ℕ→ℚ qofnat, ℤ→ℚ qofint, qneg qinv,
+                                         --   ℚ→ℤ qnum, ℚ→ℕ qden; bin qadd qsub qmul qdiv qpow; fold qsum qprod
   | cmp  (k : String) (a b : E)          -- lt le eq | ℤ operands: ilt ile ieq (boolean)
   | and  (a b : E)
   | or   (a b : E)
@@ -94,7 +96,7 @@ partial def E.calls (e : E) : List Name :=
 /-- Anything whose reference evaluation may be costly: pow, loops, heavy builtins. -/
 partial def E.heavy (e : E) : Bool :=
   (match e with
-   | .bin "pow" _ _ | .bin "ipow" _ _ | .fold .. => true
+   | .bin "pow" _ _ | .bin "ipow" _ _ | .bin "qpow" _ _ | .fold .. => true
    | .prim op _ => op ∈ ["fact", "choose", "minfac", "prime", "lcm", "fib", "bigomega"]
    | _ => false) || e.children.any E.heavy
 
@@ -118,6 +120,7 @@ def FnDef.heavy (d : FnDef) : Bool := (match d with | .recur .. => true | _ => f
 
 def isNatTy (e : Expr) : Bool := e.isConstOf ``Nat
 def isIntTy (e : Expr) : Bool := e.isConstOf ``Int
+def isRatTy (e : Expr) : Bool := e.isConstOf `Rat
 
 /-- ℕ numeral: raw literal, `OfNat.ofNat ℕ n _`, or `Nat.zero`. -/
 def natLit? (e : Expr) : Option Nat :=
@@ -207,6 +210,8 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if fn == `Nat.factorial && args.size == 1 then return .prim "fact" [← tr c args[0]!]
   if fn == `Nat.sqrt && args.size == 1 then return .prim "sqrt" [← tr c args[0]!]
   if fn == `Nat.minFac && args.size == 1 then return .prim "minfac" [← tr c args[0]!]
+  -- ℚ → ℕ
+  if fn == `Rat.den && args.size == 1 then return .prim "qden" [← trQ c args[0]!]
   -- ℤ → ℕ
   if fn == ``Int.toNat && args.size == 1 then return .prim "tonat" [← trI c args[0]!]
   if fn == ``Int.natAbs && args.size == 1 then return .prim "natabs" [← trI c args[0]!]
@@ -406,6 +411,49 @@ partial def trBool (c : Ctx) (b : Expr) : TrM E := do
   | ``Nat.beq, #[x, y] => return .cmp "eq" (← tr c x) (← tr c y)
   | _, _ => bail s!"unsupported (Bool): {fn}"
 
+/-- Translate a ℚ-valued expression (left via `Rat.num` / `Rat.den`). -/
+partial def trQ (c : Ctx) (e : Expr) : TrM E := do
+  let e := e.consumeMData
+  if let .letE _ _ v b _ := e then return ← trQ c (b.instantiate1 v)
+  if e.isApp && e.getAppFn.isLambda then return ← trQ c e.headBeta
+  let (fn, args) := e.getAppFnArgs
+  if fn == ``OfNat.ofNat && args.size == 3 && isRatTy args[0]! then
+    match args[1]!.consumeMData with
+    | .lit (.natVal k) => return .prim "qofnat" [.lit k]
+    | _ => bail "ℚ literal"
+  if (fn == ``Nat.cast || fn == ``NatCast.natCast) && args.size == 3 && isRatTy args[0]! then
+    return .prim "qofnat" [← tr c args[2]!]
+  if (fn == ``Int.cast || fn == ``IntCast.intCast) && args.size == 3 && isRatTy args[0]! then
+    return .prim "qofint" [← trI c args[2]!]
+  if fn == ``Neg.neg && args.size == 3 && isRatTy args[0]! then return .prim "qneg" [← trQ c args[2]!]
+  if fn == `Inv.inv && args.size == 3 && isRatTy args[0]! then return .prim "qinv" [← trQ c args[2]!]
+  if (fn == ``HAdd.hAdd || fn == ``HSub.hSub || fn == ``HMul.hMul || fn == ``HDiv.hDiv) && args.size == 6 &&
+      isRatTy args[0]! && isRatTy args[1]! && isRatTy args[2]! then
+    let op := if fn == ``HAdd.hAdd then "qadd" else if fn == ``HSub.hSub then "qsub"
+      else if fn == ``HMul.hMul then "qmul" else "qdiv"
+    return .bin op (← trQ c args[4]!) (← trQ c args[5]!)
+  if fn == ``HPow.hPow && args.size == 6 && isRatTy args[0]! && isNatTy args[1]! && isRatTy args[2]! then
+    return .bin "qpow" (← trQ c args[4]!) (← tr c args[5]!)
+  if fn == ``ite && args.size == 5 && isRatTy args[0]! then
+    return .ite (← trProp c args[1]!) (← trQ c args[3]!) (← trQ c args[4]!)
+  if (fn == `Finset.sum || fn == `Finset.prod) && args.size == 5 && isNatTy args[0]! && isRatTy args[1]! then
+    let id ← fresh c
+    let (lo, hi, incl, filt, elem) ← source c id args[3]!
+    let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      trQ { c with loops := c.loops.push (x, id) } (args[4]!.beta #[elem.beta #[x]])
+    return .fold (if fn == `Finset.sum then "qsum" else "qprod") id lo hi incl filt body
+  -- a non-recursive ℚ-valued helper ℕ^k → ℚ: inline its body (bounded depth)
+  if fn != .anonymous && c.depth < 4 then
+    let ci ← getConstInfo fn
+    if let some v := ci.value? then
+      let ok ← forallTelescope ci.type fun xs body => do
+        if !isRatTy body || xs.size != args.size || xs.isEmpty then return false
+        for x in xs do
+          unless isNatTy (← inferType x) do return false
+        return true
+      if ok then return ← trQ { c with depth := c.depth + 1 } (v.beta args)
+  bail s!"unsupported (ℚ): {fn}"
+
 /-- Translate a ℤ-valued expression (ℤ subterms enter from ℕ via casts / literals and leave via
 `toNat`, `natAbs` or a comparison). -/
 partial def trI (c : Ctx) (e : Expr) : TrM E := do
@@ -424,6 +472,7 @@ partial def trI (c : Ctx) (e : Expr) : TrM E := do
   if fn == ``Neg.neg && args.size == 3 && isIntTy args[0]! then return .prim "ineg" [← trI c args[2]!]
   if fn == ``Int.neg && args.size == 1 then return .prim "ineg" [← trI c args[0]!]
   if fn == ``Int.sign && args.size == 1 then return .prim "isign" [← trI c args[0]!]
+  if fn == `Rat.num && args.size == 1 then return .prim "qnum" [← trQ c args[0]!]
   -- arithmetic
   if (fn == ``HAdd.hAdd || fn == ``HSub.hSub || fn == ``HMul.hMul) && args.size == 6 &&
       isIntTy args[0]! && isIntTy args[1]! && isIntTy args[2]! then
@@ -638,6 +687,11 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
     emitC s!"{ind}if (lm2_{op}({x}, {y}, &{t})) return LM2_OVERFLOW;"
     return t
   | .prim op as => do
+    if op == "qden" then
+      -- ℚ subterms run only on the exact wide path: the fast path hands over
+      let t ← freshC
+      emitC s!"{ind}uint64_t {t} = 0ULL; if (1) return LM2_OVERFLOW;"
+      return t
     if op == "tonat" || op == "natabs" then
       let x ← cExprI sym ind (as.headD default)
       let t ← freshC
@@ -737,6 +791,10 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
 /-- ℤ subterms as checked `int64_t` (an intermediate outside int64 is reported as overflow).
 An ill-typed node becomes `#error`, so the build fails closed. -/
 partial def cExprI (sym : Name → String) (ind : String) : E → CGM String
+  | .prim "qnum" [_] => do
+    let t ← freshC
+    emitC s!"{ind}int64_t {t} = 0; if (1) return LM2_OVERFLOW;"
+    return t
   | .prim "ofnat" [x] => do
     let v ← cExpr sym ind x
     let t ← freshC
@@ -865,6 +923,11 @@ partial def cExprW (sym : Name → String) (ind : String) : E → CGM String
     emitC s!"{ind}if (lm2w_{op}(&{x}, &{y}, &{t})) return LM2_OVERFLOW;"
     return t
   | .prim op as => do
+    if op == "qden" then
+      let x ← cExprWQ sym ind (as.headD default)
+      let t ← freshC
+      emitC s!"{ind}lm2w {t}; lm2wq_den(&{x}, &{t});"
+      return t
     if op == "tonat" || op == "natabs" then
       let x ← cExprWI sym ind (as.headD default)
       let t ← freshC
@@ -963,6 +1026,11 @@ partial def cExprW (sym : Name → String) (ind : String) : E → CGM String
     return t
 
 partial def cExprWI (sym : Name → String) (ind : String) : E → CGM String
+  | .prim "qnum" [x] => do
+    let v ← cExprWQ sym ind x
+    let t ← freshC
+    emitC s!"{ind}lm2wi {t}; lm2wq_num(&{v}, &{t});"
+    return t
   | .prim "ofnat" [x] => do
     let v ← cExprW sym ind x
     let t ← freshC
@@ -1026,6 +1094,78 @@ partial def cExprWI (sym : Name → String) (ind : String) : E → CGM String
   | _ => do
     emitC "#error \"ill-typed MathIR integer node\""
     return "0"
+
+partial def cExprWQ (sym : Name → String) (ind : String) : E → CGM String
+  | .prim "qofnat" [x] => do
+    let v ← cExprW sym ind x
+    let t ← freshC
+    emitC s!"{ind}lm2wq {t}; lm2wq_ofnat(&{v}, &{t});"
+    return t
+  | .prim "qofint" [x] => do
+    let v ← cExprWI sym ind x
+    let t ← freshC
+    emitC s!"{ind}lm2wq {t}; lm2wq_ofint(&{v}, &{t});"
+    return t
+  | .prim "qneg" [x] => do
+    let v ← cExprWQ sym ind x
+    let t ← freshC
+    emitC s!"{ind}lm2wq {t}; lm2wq_neg(&{v}, &{t});"
+    return t
+  | .prim "qinv" [x] => do
+    let v ← cExprWQ sym ind x
+    let t ← freshC
+    emitC s!"{ind}lm2wq {t}; lm2wq_inv(&{v}, &{t});"
+    return t
+  | .bin op a b => do
+    let x ← cExprWQ sym ind a
+    let y ← if op == "qpow" then cExprW sym ind b else cExprWQ sym ind b
+    let t ← freshC
+    let fnm := match op with | "qadd" => "add" | "qsub" => "sub" | "qmul" => "mul" | "qdiv" => "div" | _ => "pow"
+    emitC s!"{ind}lm2wq {t};"
+    emitC s!"{ind}if (lm2wq_{fnm}(&{x}, &{y}, &{t})) return LM2_OVERFLOW;"
+    return t
+  | .ite c th el => do
+    let x ← cExprW sym ind c
+    let t ← freshC
+    emitC s!"{ind}lm2wq {t};"
+    emitC s!"{ind}if ({cCond x}) \{"
+    let r1 ← cExprWQ sym (ind ++ "  ") th
+    emitC s!"{ind}  {t} = {r1};"
+    emitC s!"{ind}} else \{"
+    let r2 ← cExprWQ sym (ind ++ "  ") el
+    emitC s!"{ind}  {t} = {r2};"
+    emitC s!"{ind}}"
+    return t
+  | .fold op id lo hi incl filt body => do
+    let l ← cExprW sym ind lo
+    let h ← cExprW sym ind hi
+    let lb ← freshC
+    let hb ← freshC
+    let t ← freshC
+    let z ← freshC
+    let v := s!"v{id}"
+    emitC s!"{ind}uint64_t {lb}, {hb};"
+    emitC s!"{ind}if (lm2w_get(&{l}, &{lb}) || lm2w_get(&{h}, &{hb})) return LM2_OVERFLOW;"
+    emitC s!"{ind}lm2w {z}; lm2w_set(&{z}, {if op == "qprod" then "1u" else "0u"});"
+    emitC s!"{ind}lm2wq {t}; lm2wq_ofnat(&{z}, &{t});"
+    emitC s!"{ind}if ({lb} {if incl then "<=" else "<"} {hb}) \{"
+    emitC s!"{ind}  uint64_t {v} = {lb};"
+    emitC s!"{ind}  for (;;) \{"
+    let ind2 := ind ++ "    "
+    let f ← cExprW sym ind2 filt
+    emitC s!"{ind2}if ({cCond f}) \{"
+    let ind3 := ind2 ++ "  "
+    let b ← cExprWQ sym ind3 body
+    emitC s!"{ind3}if (lm2wq_{if op == "qprod" then "mul" else "add"}(&{t}, &{b}, &{t})) return LM2_OVERFLOW;"
+    emitC s!"{ind2}}"
+    emitC s!"{ind2}if ({if incl then s!"{v} == {hb}" else s!"{v} + 1ULL == {hb}"}) break;"
+    emitC s!"{ind2}{v}++;"
+    emitC s!"{ind}  }"
+    emitC s!"{ind}}"
+    return t
+  | _ => do
+    emitC "#error \"ill-typed MathIR rational node\""
+    return "0"
 end
 
 def cParamsW (arity : Nat) : String :=
@@ -1078,6 +1218,7 @@ structure MG where
   ivars : Array String := #[]     -- LONGINT (ℤ subterms)
   wvars : Array String := #[]     -- LM2Wide.Wide (wide fallback)
   wivars : Array String := #[]    -- LM2Wide.WInt (wide fallback, ℤ subterms)
+  wqvars : Array String := #[]    -- LM2Wide.WRat (wide fallback, ℚ subterms)
   tmp   : Nat := 0
 
 abbrev MGM := StateM MG
@@ -1087,6 +1228,7 @@ def freshM : MGM String := modifyGet fun s => (s!"t{s.tmp}", { s with tmp := s.t
 def freshMI : MGM String := modifyGet fun s => (s!"z{s.tmp}", { s with tmp := s.tmp + 1, ivars := s.ivars.push s!"z{s.tmp}" })
 def freshMW : MGM String := modifyGet fun s => (s!"x{s.tmp}", { s with tmp := s.tmp + 1, wvars := s.wvars.push s!"x{s.tmp}" })
 def freshMWI : MGM String := modifyGet fun s => (s!"y{s.tmp}", { s with tmp := s.tmp + 1, wivars := s.wivars.push s!"y{s.tmp}" })
+def freshMWQ : MGM String := modifyGet fun s => (s!"q{s.tmp}", { s with tmp := s.tmp + 1, wqvars := s.wqvars.push s!"q{s.tmp}" })
 def declMW (v : String) : MGM Unit := modify fun s => if s.wvars.contains v then s else { s with wvars := s.wvars.push v }
 def declM (v : String) : MGM Unit := modify fun s => if s.vars.contains v then s else { s with vars := s.vars.push v }
 
@@ -1113,6 +1255,10 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
     emitM s!"{ind}IF LM2Nat.{m2Bin op}({x}, {y}, {t}) THEN RETURN Overflow END;"
     return t
   | .prim op as => do
+    if op == "qden" then
+      let t ← freshM
+      emitM s!"{ind}{t} := 0; IF TRUE THEN RETURN Overflow END;   (* ℚ: exact wide path only *)"
+      return t
     if op == "tonat" || op == "natabs" then
       let x ← mExprI sym ind (as.headD default)
       let t ← freshM
@@ -1206,6 +1352,10 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
 
 /-- ℤ subterms as checked LONGINT (see `cExprI`); an ill-typed node fails compilation. -/
 partial def mExprI (sym : Name → String) (ind : String) : E → MGM String
+  | .prim "qnum" [_] => do
+    let t ← freshMI
+    emitM s!"{ind}{t} := 0; IF TRUE THEN RETURN Overflow END;   (* ℚ: exact wide path only *)"
+    return t
   | .prim "ofnat" [x] => do
     let v ← mExpr sym ind x
     let t ← freshMI
@@ -1272,7 +1422,7 @@ def mParams (arity : Nat) : String :=
 
 def mVarDecl (st : MG) : String :=
   let one (vs : Array String) (ty : String) := if vs.isEmpty then "" else s!"  {", ".intercalate vs.toList}: {ty};\n"
-  let all := one st.vars "LONGCARD" ++ one st.ivars "LONGINT" ++ one st.wvars "LM2Wide.Wide" ++ one st.wivars "LM2Wide.WInt"
+  let all := one st.vars "LONGCARD" ++ one st.ivars "LONGINT" ++ one st.wvars "LM2Wide.Wide" ++ one st.wivars "LM2Wide.WInt" ++ one st.wqvars "LM2Wide.WRat"
   if all == "" then "" else "VAR\n" ++ all
 
 def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
@@ -1341,6 +1491,11 @@ partial def mExprW (sym : Name → String) (ind : String) : E → MGM String
     emitM s!"{ind}IF LM2Wide.{m2Wide op}({x}, {y}, {t}) THEN RETURN Overflow END;"
     return t
   | .prim op as => do
+    if op == "qden" then
+      let x ← mExprWQ sym ind (as.headD default)
+      let t ← freshMW
+      emitM s!"{ind}IF LM2Wide.QDen({x}, {t}) THEN RETURN Overflow END;"
+      return t
     if op == "tonat" || op == "natabs" then
       let x ← mExprWI sym ind (as.headD default)
       let t ← freshMW
@@ -1435,6 +1590,11 @@ partial def mExprW (sym : Name → String) (ind : String) : E → MGM String
     return t
 
 partial def mExprWI (sym : Name → String) (ind : String) : E → MGM String
+  | .prim "qnum" [x] => do
+    let v ← mExprWQ sym ind x
+    let t ← freshMWI
+    emitM s!"{ind}IF LM2Wide.QNum({v}, {t}) THEN RETURN Overflow END;"
+    return t
   | .prim "ofnat" [x] => do
     let v ← mExprW sym ind x
     let t ← freshMWI
@@ -1495,6 +1655,76 @@ partial def mExprWI (sym : Name → String) (ind : String) : E → MGM String
     return t
   | _ => do
     emitM "ILL-TYPED MathIR integer node (deliberate syntax error: fail closed)"
+    return "0"
+
+partial def mExprWQ (sym : Name → String) (ind : String) : E → MGM String
+  | .prim "qofnat" [x] => do
+    let v ← mExprW sym ind x
+    let t ← freshMWQ
+    emitM s!"{ind}IF LM2Wide.QOfNat({v}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .prim "qofint" [x] => do
+    let v ← mExprWI sym ind x
+    let t ← freshMWQ
+    emitM s!"{ind}IF LM2Wide.QOfInt({v}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .prim "qneg" [x] => do
+    let v ← mExprWQ sym ind x
+    let t ← freshMWQ
+    emitM s!"{ind}IF LM2Wide.QNeg({v}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .prim "qinv" [x] => do
+    let v ← mExprWQ sym ind x
+    let t ← freshMWQ
+    emitM s!"{ind}IF LM2Wide.QInv({v}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .bin op a b => do
+    let x ← mExprWQ sym ind a
+    let y ← if op == "qpow" then mExprW sym ind b else mExprWQ sym ind b
+    let t ← freshMWQ
+    let p := match op with | "qadd" => "QAdd" | "qsub" => "QSub" | "qmul" => "QMul" | "qdiv" => "QDiv" | _ => "QPow"
+    emitM s!"{ind}IF LM2Wide.{p}({x}, {y}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .ite c th el => do
+    let x ← mExprW sym ind c
+    let t ← freshMWQ
+    emitM s!"{ind}IF NOT LM2Wide.IsZero({x}) THEN"
+    let r1 ← mExprWQ sym (ind ++ "  ") th
+    emitM s!"{ind}  {t} := {r1}"
+    emitM s!"{ind}ELSE"
+    let r2 ← mExprWQ sym (ind ++ "  ") el
+    emitM s!"{ind}  {t} := {r2}"
+    emitM s!"{ind}END;"
+    return t
+  | .fold op id lo hi incl filt body => do
+    let l ← mExprW sym ind lo
+    let h ← mExprW sym ind hi
+    let lb ← freshM
+    let hb ← freshM
+    let t ← freshMWQ
+    let z ← freshMW
+    let v := s!"v{id}"
+    declM v
+    emitM s!"{ind}IF LM2Wide.Get({l}, {lb}) OR LM2Wide.Get({h}, {hb}) THEN RETURN Overflow END;"
+    emitM s!"{ind}LM2Wide.Set({z}, {if op == "qprod" then "1" else "0"});"
+    emitM s!"{ind}IF LM2Wide.QOfNat({z}, {t}) THEN RETURN Overflow END;"
+    emitM s!"{ind}IF {lb} {if incl then "<=" else "<"} {hb} THEN"
+    emitM s!"{ind}  {v} := {lb};"
+    emitM s!"{ind}  LOOP"
+    let ind2 := ind ++ "    "
+    let f ← mExprW sym ind2 filt
+    emitM s!"{ind2}IF NOT LM2Wide.IsZero({f}) THEN"
+    let ind3 := ind2 ++ "  "
+    let b ← mExprWQ sym ind3 body
+    emitM s!"{ind3}IF LM2Wide.{if op == "qprod" then "QMul" else "QAdd"}({t}, {b}, {t}) THEN RETURN Overflow END"
+    emitM s!"{ind2}END;"
+    emitM s!"{ind2}IF {if incl then s!"{v} = {hb}" else s!"{v} + 1 = {hb}"} THEN EXIT END;"
+    emitM s!"{ind2}INC({v})"
+    emitM s!"{ind}  END"
+    emitM s!"{ind}END;"
+    return t
+  | _ => do
+    emitM "ILL-TYPED MathIR rational node (deliberate syntax error: fail closed)"
     return "0"
 end
 
@@ -1584,6 +1814,15 @@ def chk (b : Budget) (v : Nat) : IRM Nat :=
 
 def chkI (b : Budget) (v : Int) : IRM Int :=
   if v.natAbs.log2 ≥ b.maxBits then throw "size budget" else pure v
+
+/-- Normalize a fraction (Lean's ℚ: lowest terms, positive denominator), with the size budget. -/
+def qnorm (b : Budget) (n : Int) (d : Nat) : IRM (Int × Nat) := do
+  if d == 0 then throw "ill-formed fraction"
+  if n == 0 then return (0, 1)
+  let g := Nat.gcd n.natAbs d
+  let n' ← chkI b (n / Int.ofNat g)
+  let d' ← chk b (d / g)
+  return (n', d')
 
 def b2n (p : Bool) : Nat := if p then 1 else 0
 
@@ -1702,6 +1941,8 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     if op == "tonat" || op == "natabs" then
       let v ← evalI b defs args i w lv (xs.headD default)
       return (if op == "tonat" then v.toNat else v.natAbs)
+    if op == "qden" then
+      return (← evalQ b defs args i w lv (xs.headD default)).2
     let mut vs : Array Nat := #[]
     for x in xs do vs := vs.push (← evalE b defs args i w lv x)
     let a := vs.getD 0 0
@@ -1775,6 +2016,7 @@ partial def evalI (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
   | .prim "ofnat" [x] => do pure (Int.ofNat (← evalE b defs args i w lv x))
   | .prim "ineg" [x] => do pure (- (← evalI b defs args i w lv x))
   | .prim "isign" [x] => do pure (← evalI b defs args i w lv x).sign
+  | .prim "qnum" [x] => do pure (← evalQ b defs args i w lv x).1
   | .bin op x y => do
     let a ← evalI b defs args i w lv x
     match op with
@@ -1807,6 +2049,54 @@ partial def evalI (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
       k := k + 1
     return acc
   | _ => throw "ill-typed ℤ node"
+
+/-- ℚ-valued subterms (see `trQ`), as normalized `(num, den)`. -/
+partial def evalQ (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat) (i : Nat)
+    (w : Array Nat) (lv : Std.HashMap Nat Nat) : E → IRM (Int × Nat)
+  | .prim "qofnat" [x] => do pure (Int.ofNat (← evalE b defs args i w lv x), 1)
+  | .prim "qofint" [x] => do pure ((← evalI b defs args i w lv x), 1)
+  | .prim "qneg" [x] => do
+    let (n, d) ← evalQ b defs args i w lv x
+    pure (-n, d)
+  | .prim "qinv" [x] => do
+    let (n, d) ← evalQ b defs args i w lv x
+    if n == 0 then pure (0, 1)
+    else pure (if n < 0 then -(Int.ofNat d) else Int.ofNat d, n.natAbs)
+  | .bin op x y => do
+    let (an, ad) ← evalQ b defs args i w lv x
+    if op == "qpow" then
+      let c ← evalE b defs args i w lv y
+      -- Lean evaluates the power on numerator and denominator; keep the exponent within the budget
+      if c > b.maxBits + 64 then throw "size budget"
+      if c * (an.natAbs.log2 + ad.log2 + 2) > 2 * b.maxBits + 128 then throw "size budget"
+      return (← chkI b (an ^ c), ← chk b (ad ^ c))
+    let (bn, bd) ← evalQ b defs args i w lv y
+    match op with
+    | "qadd" => qnorm b (an * Int.ofNat bd + bn * Int.ofNat ad) (ad * bd)
+    | "qsub" => qnorm b (an * Int.ofNat bd - bn * Int.ofNat ad) (ad * bd)
+    | "qmul" => qnorm b (an * bn) (ad * bd)
+    | "qdiv" =>
+      if bn == 0 then pure (0, 1)
+      else qnorm b (an * (if bn < 0 then -(Int.ofNat bd) else Int.ofNat bd)) (ad * bn.natAbs)
+    | _ => throw "ill-typed ℚ node"
+  | .ite c t e => do
+    if (← evalE b defs args i w lv c) != 0 then evalQ b defs args i w lv t else evalQ b defs args i w lv e
+  | .fold op id lo hi incl filt body => do
+    let l ← evalE b defs args i w lv lo
+    let h ← evalE b defs args i w lv hi
+    let stop := if incl then h + 1 else h
+    let mut acc : Int × Nat := if op == "qprod" then (1, 1) else (0, 1)
+    let mut k := l
+    while k < stop do
+      tick b
+      let lv' := lv.insert id k
+      if (← evalE b defs args i w lv' filt) != 0 then
+        let (vn, vd) ← evalQ b defs args i w lv' body
+        acc ← if op == "qprod" then qnorm b (acc.1 * vn) (acc.2 * vd)
+          else qnorm b (acc.1 * Int.ofNat vd + vn * Int.ofNat acc.2) (acc.2 * vd)
+      k := k + 1
+    return acc
+  | _ => throw "ill-typed ℚ node"
 
 partial def evalDef (b : Budget) (defs : Std.HashMap Name FnDef) (d : FnDef) (vs : Array Nat) : IRM Nat := do
   match d with

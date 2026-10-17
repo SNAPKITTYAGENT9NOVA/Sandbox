@@ -1,0 +1,59 @@
+DEFINITION MODULE LM2Wide;
+(* LEAN-M2-CC-001 MathIR wide runtime: exact fixed-capacity multi-precision ℕ and ℤ, native
+   Modula-2 (same algorithms as lm2_wide.h). Used only as the fallback of a generated procedure
+   whose fast LONGCARD evaluation overflowed. Capacity Limbs * 32 = 4224 bits.
+   Every operation returns TRUE on failure (capacity exceeded, or an argument outside a builtin's
+   supported range) and FALSE on success; results go to the last VAR parameter, which may be the
+   same variable as an input. Lean semantics: truncated subtraction, x DIV 0 = 0, x MOD 0 = x,
+   0^0 = 1. Hand-written, fixed. *)
+
+CONST
+  Limbs = 132;
+
+TYPE
+  Digits = ARRAY [0..Limbs - 1] OF CARDINAL;
+  Wide = RECORD n: CARDINAL; d: Digits END;          (* n used limbs, d[n-1] # 0; 0 has n = 0 *)
+  WInt = RECORD neg: BOOLEAN; m: Wide END;           (* sign-magnitude; 0 is never negative *)
+
+PROCEDURE Set (VAR r: Wide; x: LONGCARD);
+PROCEDURE Get (VAR a: Wide; VAR x: LONGCARD) : BOOLEAN;   (* TRUE iff a >= 2^64 *)
+PROCEDURE Cmp (VAR a, b: Wide) : INTEGER;                 (* -1, 0, 1 *)
+PROCEDURE IsZero (VAR a: Wide) : BOOLEAN;
+
+PROCEDURE Add (VAR a, b, r: Wide) : BOOLEAN;
+PROCEDURE Sub (VAR a, b, r: Wide) : BOOLEAN;
+PROCEDURE Mul (VAR a, b, r: Wide) : BOOLEAN;
+PROCEDURE Div (VAR a, b, r: Wide) : BOOLEAN;
+PROCEDURE Mod (VAR a, b, r: Wide) : BOOLEAN;
+PROCEDURE Pow (VAR a, e, r: Wide) : BOOLEAN;
+PROCEDURE Min (VAR a, b, r: Wide) : BOOLEAN;
+PROCEDURE Max (VAR a, b, r: Wide) : BOOLEAN;
+PROCEDURE Gcd (VAR a, b, r: Wide) : BOOLEAN;
+PROCEDURE Lcm (VAR a, b, r: Wide) : BOOLEAN;
+PROCEDURE Fact (VAR n, r: Wide) : BOOLEAN;
+PROCEDURE Choose (VAR n, k, r: Wide) : BOOLEAN;
+PROCEDURE Sqrt (VAR n, r: Wide) : BOOLEAN;
+PROCEDURE MinFac (VAR n, r: Wide) : BOOLEAN;              (* argument must fit 64 bits *)
+PROCEDURE Prime (VAR n, r: Wide) : BOOLEAN;               (* argument must fit 64 bits; 1 / 0 *)
+PROCEDURE BigOmega (VAR n, r: Wide) : BOOLEAN;            (* argument must fit 64 bits *)
+PROCEDURE Dvd (VAR a, b, r: Wide) : BOOLEAN;              (* 1 / 0 *)
+PROCEDURE Fib (VAR n, r: Wide) : BOOLEAN;
+PROCEDURE Log (VAR b, n, r: Wide) : BOOLEAN;
+PROCEDURE Log2 (VAR n, r: Wide) : BOOLEAN;
+PROCEDURE Padic (VAR p, n, r: Wide) : BOOLEAN;
+PROCEDURE DigSum (VAR b, n, r: Wide) : BOOLEAN;
+PROCEDURE DigLen (VAR b, n, r: Wide) : BOOLEAN;
+PROCEDURE DigRev (VAR b, n, r: Wide) : BOOLEAN;
+
+PROCEDURE IOfNat (VAR a: Wide; VAR r: WInt) : BOOLEAN;
+PROCEDURE INeg (VAR a, r: WInt) : BOOLEAN;
+PROCEDURE ISign (VAR a, r: WInt) : BOOLEAN;
+PROCEDURE IAdd (VAR a, b, r: WInt) : BOOLEAN;
+PROCEDURE ISub (VAR a, b, r: WInt) : BOOLEAN;
+PROCEDURE IMul (VAR a, b, r: WInt) : BOOLEAN;
+PROCEDURE IPow (VAR a: WInt; VAR e: Wide; VAR r: WInt) : BOOLEAN;
+PROCEDURE IToNat (VAR a: WInt; VAR r: Wide) : BOOLEAN;
+PROCEDURE INatAbs (VAR a: WInt; VAR r: Wide) : BOOLEAN;
+PROCEDURE ICmp (VAR a, b: WInt) : INTEGER;
+
+END LM2Wide.

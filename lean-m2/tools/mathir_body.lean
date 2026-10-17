@@ -749,7 +749,247 @@ def cFunction (sym : Name → String) (n : Name) (d : FnDef) : String :=
       emitC s!"  *out = w{K - 1};"
     emitC "  return LM2_OK;"
   let st := (body.run {}).2
-  s!"/* Lean: {n} */\nint32_t {sym n}({cParams d.arity}) \{\n" ++ "\n".intercalate st.lines.toList ++ "\n}\n"
+  s!"/* Lean: {n} (fast path: checked 64-bit) */\nstatic int32_t {sym n}_fast({cParams d.arity}) \{\n" ++ "\n".intercalate st.lines.toList ++ "\n}\n"
+
+/-! ## C wide fallback (exact multi-precision, lm2_wide.h)
+
+The public C function runs the fast 64-bit path; only if that reports overflow is the same IR
+re-evaluated with exact `lm2w` / `lm2wi` intermediates, and the result returned iff it fits. -/
+
+def cWideNat : String → String
+  | "prime" => "prime" | op => op
+
+def cCond (x : String) : String := s!"!lm2w_iszero(&{x})"
+
+mutual
+partial def cExprW (sym : Name → String) (ind : String) : E → CGM String
+  | .lit n => do
+    let t ← freshC
+    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, {n}ULL);"
+    return t
+  | .arg i => pure s!"(*a{i})"
+  | .idx => do
+    let t ← freshC
+    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, i);"
+    return t
+  | .prev j => pure s!"w{j}"
+  | .lvar id => do
+    let t ← freshC
+    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, v{id});"
+    return t
+  | .bin op a b => do
+    if op.startsWith "i" then emitC "#error \"ill-typed MathIR: integer operation in a natural-number position\""
+    let x ← cExprW sym ind a
+    let y ← cExprW sym ind b
+    let t ← freshC
+    emitC s!"{ind}lm2w {t};"
+    emitC s!"{ind}if (lm2w_{op}(&{x}, &{y}, &{t})) return LM2_OVERFLOW;"
+    return t
+  | .prim op as => do
+    if op == "tonat" || op == "natabs" then
+      let x ← cExprWI sym ind (as.headD default)
+      let t ← freshC
+      emitC s!"{ind}lm2w {t}; lm2wi_{op}(&{x}, &{t});"
+      return t
+    if op ∈ ["ofnat", "ineg", "isign"] then emitC "#error \"ill-typed MathIR: integer operation in a natural-number position\""
+    let mut vs : Array String := #[]
+    for a in as do vs := vs.push (← cExprW sym ind a)
+    let t ← freshC
+    emitC s!"{ind}lm2w {t};"
+    emitC s!"{ind}if (lm2w_{cWideNat op}({", ".intercalate (vs.toList.map (s!"&{·}") ++ [s!"&{t}"])})) return LM2_OVERFLOW;"
+    return t
+  | .cmp k a b => do
+    let ints := k.startsWith "i"
+    let x ← if ints then cExprWI sym ind a else cExprW sym ind a
+    let y ← if ints then cExprWI sym ind b else cExprW sym ind b
+    let t ← freshC
+    let rel := match k with | "lt" | "ilt" => "<" | "le" | "ile" => "<=" | _ => "=="
+    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, ({if ints then "lm2wi_cmp" else "lm2w_cmp"}(&{x}, &{y}) {rel} 0) ? 1u : 0u);"
+    return t
+  | .not a => do
+    let x ← cExprW sym ind a
+    let t ← freshC
+    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, lm2w_iszero(&{x}) ? 1u : 0u);"
+    return t
+  | .and a b => do
+    let x ← cExprW sym ind a
+    let t ← freshC
+    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, 0u);"
+    emitC s!"{ind}if ({cCond x}) \{"
+    let y ← cExprW sym (ind ++ "  ") b
+    emitC s!"{ind}  lm2w_set(&{t}, lm2w_iszero(&{y}) ? 0u : 1u);"
+    emitC s!"{ind}}"
+    return t
+  | .or a b => do
+    let x ← cExprW sym ind a
+    let t ← freshC
+    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, 1u);"
+    emitC s!"{ind}if (lm2w_iszero(&{x})) \{"
+    let y ← cExprW sym (ind ++ "  ") b
+    emitC s!"{ind}  lm2w_set(&{t}, lm2w_iszero(&{y}) ? 0u : 1u);"
+    emitC s!"{ind}}"
+    return t
+  | .ite c th el => do
+    let x ← cExprW sym ind c
+    let t ← freshC
+    emitC s!"{ind}lm2w {t};"
+    emitC s!"{ind}if ({cCond x}) \{"
+    let r1 ← cExprW sym (ind ++ "  ") th
+    emitC s!"{ind}  {t} = {r1};"
+    emitC s!"{ind}} else \{"
+    let r2 ← cExprW sym (ind ++ "  ") el
+    emitC s!"{ind}  {t} = {r2};"
+    emitC s!"{ind}}"
+    return t
+  | .fold op id lo hi incl filt body => do
+    if op.startsWith "i" then emitC "#error \"ill-typed MathIR: integer fold in a natural-number position\""
+    let l ← cExprW sym ind lo
+    let h ← cExprW sym ind hi
+    let lb ← freshC
+    let hb ← freshC
+    let t ← freshC
+    let v := s!"v{id}"
+    -- loop bounds beyond 64 bits would never finish within any budget: fail (sound)
+    emitC s!"{ind}uint64_t {lb}, {hb};"
+    emitC s!"{ind}if (lm2w_get(&{l}, &{lb}) || lm2w_get(&{h}, &{hb})) return LM2_OVERFLOW;"
+    emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, {if op == "prod" then "1u" else "0u"});"
+    emitC s!"{ind}if ({lb} {if incl then "<=" else "<"} {hb}) \{"
+    emitC s!"{ind}  uint64_t {v} = {lb};"
+    emitC s!"{ind}  for (;;) \{"
+    let ind2 := ind ++ "    "
+    let f ← cExprW sym ind2 filt
+    emitC s!"{ind2}if ({cCond f}) \{"
+    let ind3 := ind2 ++ "  "
+    if op == "count" then
+      emitC s!"{ind3}lm2w one; lm2w_set(&one, 1u);"
+      emitC s!"{ind3}if (lm2w_add(&{t}, &one, &{t})) return LM2_OVERFLOW;"
+    else if op == "max" then
+      let b ← cExprW sym ind3 body
+      emitC s!"{ind3}if (lm2w_cmp(&{b}, &{t}) > 0) {t} = {b};"
+    else
+      let b ← cExprW sym ind3 body
+      emitC s!"{ind3}if (lm2w_{if op == "prod" then "mul" else "add"}(&{t}, &{b}, &{t})) return LM2_OVERFLOW;"
+    emitC s!"{ind2}}"
+    emitC s!"{ind2}if ({if incl then s!"{v} == {hb}" else s!"{v} + 1ULL == {hb}"}) break;"
+    emitC s!"{ind2}{v}++;"
+    emitC s!"{ind}  }"
+    emitC s!"{ind}}"
+    return t
+  | .call f as => do
+    let mut vs : Array String := #[]
+    for a in as do vs := vs.push (← cExprW sym ind a)
+    let t ← freshC
+    emitC s!"{ind}lm2w {t};"
+    emitC s!"{ind}if ({sym f}_w({", ".intercalate (vs.toList.map (s!"&{·}") ++ [s!"&{t}"])}) != LM2_OK) return LM2_OVERFLOW;"
+    return t
+
+partial def cExprWI (sym : Name → String) (ind : String) : E → CGM String
+  | .prim "ofnat" [x] => do
+    let v ← cExprW sym ind x
+    let t ← freshC
+    emitC s!"{ind}lm2wi {t}; lm2wi_ofnat(&{v}, &{t});"
+    return t
+  | .prim "ineg" [x] => do
+    let v ← cExprWI sym ind x
+    let t ← freshC
+    emitC s!"{ind}lm2wi {t}; lm2wi_neg(&{v}, &{t});"
+    return t
+  | .prim "isign" [x] => do
+    let v ← cExprWI sym ind x
+    let t ← freshC
+    emitC s!"{ind}lm2wi {t}; lm2wi_sign(&{v}, &{t});"
+    return t
+  | .bin op a b => do
+    let x ← cExprWI sym ind a
+    let y ← if op == "ipow" then cExprW sym ind b else cExprWI sym ind b
+    let t ← freshC
+    let fnm := match op with | "iadd" => "add" | "isub" => "sub" | "imul" => "mul" | _ => "pow"
+    emitC s!"{ind}lm2wi {t};"
+    emitC s!"{ind}if (lm2wi_{fnm}(&{x}, &{y}, &{t})) return LM2_OVERFLOW;"
+    return t
+  | .ite c th el => do
+    let x ← cExprW sym ind c
+    let t ← freshC
+    emitC s!"{ind}lm2wi {t};"
+    emitC s!"{ind}if ({cCond x}) \{"
+    let r1 ← cExprWI sym (ind ++ "  ") th
+    emitC s!"{ind}  {t} = {r1};"
+    emitC s!"{ind}} else \{"
+    let r2 ← cExprWI sym (ind ++ "  ") el
+    emitC s!"{ind}  {t} = {r2};"
+    emitC s!"{ind}}"
+    return t
+  | .fold op id lo hi incl filt body => do
+    let l ← cExprW sym ind lo
+    let h ← cExprW sym ind hi
+    let lb ← freshC
+    let hb ← freshC
+    let t ← freshC
+    let v := s!"v{id}"
+    emitC s!"{ind}uint64_t {lb}, {hb};"
+    emitC s!"{ind}if (lm2w_get(&{l}, &{lb}) || lm2w_get(&{h}, &{hb})) return LM2_OVERFLOW;"
+    emitC s!"{ind}lm2wi {t}; {t}.neg = 0; lm2w_set(&{t}.m, {if op == "iprod" then "1u" else "0u"});"
+    emitC s!"{ind}if ({lb} {if incl then "<=" else "<"} {hb}) \{"
+    emitC s!"{ind}  uint64_t {v} = {lb};"
+    emitC s!"{ind}  for (;;) \{"
+    let ind2 := ind ++ "    "
+    let f ← cExprW sym ind2 filt
+    emitC s!"{ind2}if ({cCond f}) \{"
+    let ind3 := ind2 ++ "  "
+    let b ← cExprWI sym ind3 body
+    emitC s!"{ind3}if (lm2wi_{if op == "iprod" then "mul" else "add"}(&{t}, &{b}, &{t})) return LM2_OVERFLOW;"
+    emitC s!"{ind2}}"
+    emitC s!"{ind2}if ({if incl then s!"{v} == {hb}" else s!"{v} + 1ULL == {hb}"}) break;"
+    emitC s!"{ind2}{v}++;"
+    emitC s!"{ind}  }"
+    emitC s!"{ind}}"
+    return t
+  | _ => do
+    emitC "#error \"ill-typed MathIR integer node\""
+    return "0"
+end
+
+def cParamsW (arity : Nat) : String :=
+  ", ".intercalate ((List.range arity).map (s!"const lm2w *a{·}") ++ ["lm2w *out"])
+
+def cFunctionW (sym : Name → String) (n : Name) (d : FnDef) : String :=
+  let body : CGM Unit := do
+    match d with
+    | .direct _ e =>
+      let r ← cExprW sym "  " e
+      emitC s!"  *out = {r};"
+    | .recur _ j bases step =>
+      let K := bases.length
+      emitC "  uint64_t i, nrec;"
+      emitC s!"  if (lm2w_get(a{j}, &nrec)) return LM2_OVERFLOW;"
+      for h : c in [0:K] do
+        let r ← cExprW sym "  " bases[c]!
+        emitC s!"  lm2w w{c}; w{c} = {r};"
+      for c in List.range K do
+        emitC s!"  if (nrec == {c}ULL) \{ *out = w{c}; return LM2_OK; }"
+      emitC "  for (i = 0ULL; ; i++) {"
+      let r ← cExprW sym "    " step
+      emitC s!"    lm2w nv = {r};"
+      for c in List.range (K - 1) do
+        emitC s!"    w{c} = w{c + 1};"
+      emitC s!"    w{K - 1} = nv;"
+      emitC s!"    if (i == nrec - {K}ULL) break;"
+      emitC "  }"
+      emitC s!"  *out = w{K - 1};"
+    emitC "  return LM2_OK;"
+  let st := (body.run {}).2
+  s!"/* Lean: {n} (wide fallback: exact, lm2_wide.h) */\nstatic int32_t {sym n}_w({cParamsW d.arity}) \{\n" ++ "\n".intercalate st.lines.toList ++ "\n}\n"
+
+/-- Public entry: fast path; on overflow, exact recomputation; the result is returned iff it fits. -/
+def cWrapper (sym : Name → String) (n : Name) (d : FnDef) : String :=
+  let ks := List.range d.arity
+  let decl := ", ".intercalate (ks.map (s!"A{·}") ++ ["R"])
+  let sets := String.join (ks.map fun k => s!"  lm2w_set(&A{k}, a{k});\n")
+  let fastArgs := ", ".intercalate (ks.map (s!"a{·}") ++ ["out"])
+  let wideArgs := ", ".intercalate (ks.map (s!"&A{·}") ++ ["&R"])
+  s!"int32_t {sym n}({cParams d.arity}) \{\n  int32_t s; uint64_t v; lm2w {decl};\n  if (out == 0) return LM2_ERR_NULL;\n" ++
+  s!"  s = {sym n}_fast({fastArgs});\n  if (s != LM2_OVERFLOW) return s;\n" ++ sets ++
+  s!"  if ({sym n}_w({wideArgs}) != LM2_OK) return LM2_OVERFLOW;\n  if (lm2w_get(&R, &v)) return LM2_OVERFLOW;\n  *out = v; return LM2_OK;\n}\n"
 
 /-! ## Modula-2 emission (native; checked operations via LM2Nat) -/
 
@@ -757,6 +997,8 @@ structure MG where
   lines : Array String := #[]
   vars  : Array String := #[]     -- LONGCARD
   ivars : Array String := #[]     -- LONGINT (ℤ subterms)
+  wvars : Array String := #[]     -- LM2Wide.Wide (wide fallback)
+  wivars : Array String := #[]    -- LM2Wide.WInt (wide fallback, ℤ subterms)
   tmp   : Nat := 0
 
 abbrev MGM := StateM MG
@@ -764,6 +1006,9 @@ abbrev MGM := StateM MG
 def emitM (l : String) : MGM Unit := modify fun s => { s with lines := s.lines.push l }
 def freshM : MGM String := modifyGet fun s => (s!"t{s.tmp}", { s with tmp := s.tmp + 1, vars := s.vars.push s!"t{s.tmp}" })
 def freshMI : MGM String := modifyGet fun s => (s!"z{s.tmp}", { s with tmp := s.tmp + 1, ivars := s.ivars.push s!"z{s.tmp}" })
+def freshMW : MGM String := modifyGet fun s => (s!"x{s.tmp}", { s with tmp := s.tmp + 1, wvars := s.wvars.push s!"x{s.tmp}" })
+def freshMWI : MGM String := modifyGet fun s => (s!"y{s.tmp}", { s with tmp := s.tmp + 1, wivars := s.wivars.push s!"y{s.tmp}" })
+def declMW (v : String) : MGM Unit := modify fun s => if s.wvars.contains v then s else { s with wvars := s.wvars.push v }
 def declM (v : String) : MGM Unit := modify fun s => if s.vars.contains v then s else { s with vars := s.vars.push v }
 
 def m2Bin : String → String
@@ -946,6 +1191,11 @@ def mParams (arity : Nat) : String :=
   let as := ", ".intercalate ((List.range arity).map (s!"a{·}"))
   s!"{as}: LONGCARD; VAR out: LONGCARD"
 
+def mVarDecl (st : MG) : String :=
+  let one (vs : Array String) (ty : String) := if vs.isEmpty then "" else s!"  {", ".intercalate vs.toList}: {ty};\n"
+  let all := one st.vars "LONGCARD" ++ one st.ivars "LONGINT" ++ one st.wvars "LM2Wide.Wide" ++ one st.wivars "LM2Wide.WInt"
+  if all == "" then "" else "VAR\n" ++ all
+
 def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
   let body : MGM Unit := do
     match d with
@@ -974,11 +1224,246 @@ def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
       emitM s!"  out := w{K - 1};"
     emitM "  RETURN Ok"
   let st := (body.run {}).2
-  let natDecl := if st.vars.isEmpty then "" else s!"  {", ".intercalate st.vars.toList}: LONGCARD;\n"
-  let intDecl := if st.ivars.isEmpty then "" else s!"  {", ".intercalate st.ivars.toList}: LONGINT;\n"
-  let varDecl := if natDecl ++ intDecl == "" then "" else "VAR\n" ++ natDecl ++ intDecl
-  s!"(* Lean: {n} *)\nPROCEDURE {sym n} ({mParams d.arity}) : INTEGER;\n{varDecl}BEGIN\n" ++
-    "\n".intercalate st.lines.toList ++ s!"\nEND {sym n};\n"
+  s!"(* Lean: {n} (fast path: checked LONGCARD) *)\nPROCEDURE {sym n}Fast ({mParams d.arity}) : INTEGER;\n{mVarDecl st}BEGIN\n" ++
+    "\n".intercalate st.lines.toList ++ s!"\nEND {sym n}Fast;\n"
+
+/-! ## Modula-2 wide fallback (exact multi-precision, LM2Wide) -/
+
+def m2Wide : String → String
+  | "add" => "Add" | "mul" => "Mul" | "sub" => "Sub" | "div" => "Div" | "mod" => "Mod" | "pow" => "Pow"
+  | "min" => "Min" | "max" => "Max" | "gcd" => "Gcd" | "lcm" => "Lcm" | "fact" => "Fact"
+  | "choose" => "Choose" | "sqrt" => "Sqrt" | "minfac" => "MinFac" | "prime" => "Prime"
+  | "bigomega" => "BigOmega" | "dvd" => "Dvd" | "fib" => "Fib" | "log" => "Log" | "log2" => "Log2"
+  | "padic" => "Padic" | "digsum" => "DigSum" | "diglen" => "DigLen" | "digrev" => "DigRev"
+  | op => s!"ILLTYPED_{op}"
+
+mutual
+partial def mExprW (sym : Name → String) (ind : String) : E → MGM String
+  | .lit n => do
+    let t ← freshMW
+    emitM s!"{ind}LM2Wide.Set({t}, {n});"
+    return t
+  | .arg i => pure s!"a{i}"
+  | .idx => do
+    let t ← freshMW
+    emitM s!"{ind}LM2Wide.Set({t}, i);"
+    return t
+  | .prev j => do declMW s!"w{j}"; pure s!"w{j}"
+  | .lvar id => do
+    declM s!"v{id}"
+    let t ← freshMW
+    emitM s!"{ind}LM2Wide.Set({t}, v{id});"
+    return t
+  | .bin op a b => do
+    let x ← mExprW sym ind a
+    let y ← mExprW sym ind b
+    let t ← freshMW
+    emitM s!"{ind}IF LM2Wide.{m2Wide op}({x}, {y}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .prim op as => do
+    if op == "tonat" || op == "natabs" then
+      let x ← mExprWI sym ind (as.headD default)
+      let t ← freshMW
+      emitM s!"{ind}IF LM2Wide.{if op == "tonat" then "IToNat" else "INatAbs"}({x}, {t}) THEN RETURN Overflow END;"
+      return t
+    let mut vs : Array String := #[]
+    for a in as do vs := vs.push (← mExprW sym ind a)
+    let t ← freshMW
+    emitM s!"{ind}IF LM2Wide.{m2Wide op}({", ".intercalate (vs.toList ++ [t])}) THEN RETURN Overflow END;"
+    return t
+  | .cmp k a b => do
+    let ints := k.startsWith "i"
+    let x ← if ints then mExprWI sym ind a else mExprW sym ind a
+    let y ← if ints then mExprWI sym ind b else mExprW sym ind b
+    let t ← freshMW
+    let rel := match k with | "lt" | "ilt" => "<" | "le" | "ile" => "<=" | _ => "="
+    emitM s!"{ind}IF LM2Wide.{if ints then "ICmp" else "Cmp"}({x}, {y}) {rel} 0 THEN LM2Wide.Set({t}, 1) ELSE LM2Wide.Set({t}, 0) END;"
+    return t
+  | .not a => do
+    let x ← mExprW sym ind a
+    let t ← freshMW
+    emitM s!"{ind}IF LM2Wide.IsZero({x}) THEN LM2Wide.Set({t}, 1) ELSE LM2Wide.Set({t}, 0) END;"
+    return t
+  | .and a b => do
+    let x ← mExprW sym ind a
+    let t ← freshMW
+    emitM s!"{ind}LM2Wide.Set({t}, 0);"
+    emitM s!"{ind}IF NOT LM2Wide.IsZero({x}) THEN"
+    let y ← mExprW sym (ind ++ "  ") b
+    emitM s!"{ind}  IF NOT LM2Wide.IsZero({y}) THEN LM2Wide.Set({t}, 1) END"
+    emitM s!"{ind}END;"
+    return t
+  | .or a b => do
+    let x ← mExprW sym ind a
+    let t ← freshMW
+    emitM s!"{ind}LM2Wide.Set({t}, 1);"
+    emitM s!"{ind}IF LM2Wide.IsZero({x}) THEN"
+    let y ← mExprW sym (ind ++ "  ") b
+    emitM s!"{ind}  IF LM2Wide.IsZero({y}) THEN LM2Wide.Set({t}, 0) END"
+    emitM s!"{ind}END;"
+    return t
+  | .ite c th el => do
+    let x ← mExprW sym ind c
+    let t ← freshMW
+    emitM s!"{ind}IF NOT LM2Wide.IsZero({x}) THEN"
+    let r1 ← mExprW sym (ind ++ "  ") th
+    emitM s!"{ind}  {t} := {r1}"
+    emitM s!"{ind}ELSE"
+    let r2 ← mExprW sym (ind ++ "  ") el
+    emitM s!"{ind}  {t} := {r2}"
+    emitM s!"{ind}END;"
+    return t
+  | .fold op id lo hi incl filt body => do
+    let l ← mExprW sym ind lo
+    let h ← mExprW sym ind hi
+    let lb ← freshM
+    let hb ← freshM
+    let t ← freshMW
+    let one ← freshMW
+    let v := s!"v{id}"
+    declM v
+    emitM s!"{ind}IF LM2Wide.Get({l}, {lb}) OR LM2Wide.Get({h}, {hb}) THEN RETURN Overflow END;"
+    emitM s!"{ind}LM2Wide.Set({t}, {if op == "prod" then "1" else "0"}); LM2Wide.Set({one}, 1);"
+    emitM s!"{ind}IF {lb} {if incl then "<=" else "<"} {hb} THEN"
+    emitM s!"{ind}  {v} := {lb};"
+    emitM s!"{ind}  LOOP"
+    let ind2 := ind ++ "    "
+    let f ← mExprW sym ind2 filt
+    emitM s!"{ind2}IF NOT LM2Wide.IsZero({f}) THEN"
+    let ind3 := ind2 ++ "  "
+    if op == "count" then
+      emitM s!"{ind3}IF LM2Wide.Add({t}, {one}, {t}) THEN RETURN Overflow END"
+    else if op == "max" then
+      let b ← mExprW sym ind3 body
+      emitM s!"{ind3}IF LM2Wide.Cmp({b}, {t}) > 0 THEN {t} := {b} END"
+    else if op == "sum" || op == "prod" then
+      let b ← mExprW sym ind3 body
+      emitM s!"{ind3}IF LM2Wide.{if op == "prod" then "Mul" else "Add"}({t}, {b}, {t}) THEN RETURN Overflow END"
+    else
+      emitM "ILL-TYPED MathIR integer fold (deliberate syntax error: fail closed)"
+    emitM s!"{ind2}END;"
+    emitM s!"{ind2}IF {if incl then s!"{v} = {hb}" else s!"{v} + 1 = {hb}"} THEN EXIT END;"
+    emitM s!"{ind2}INC({v})"
+    emitM s!"{ind}  END"
+    emitM s!"{ind}END;"
+    return t
+  | .call f as => do
+    let mut vs : Array String := #[]
+    for a in as do vs := vs.push (← mExprW sym ind a)
+    let t ← freshMW
+    emitM s!"{ind}IF {sym f}W({", ".intercalate (vs.toList ++ [t])}) # Ok THEN RETURN Overflow END;"
+    return t
+
+partial def mExprWI (sym : Name → String) (ind : String) : E → MGM String
+  | .prim "ofnat" [x] => do
+    let v ← mExprW sym ind x
+    let t ← freshMWI
+    emitM s!"{ind}IF LM2Wide.IOfNat({v}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .prim "ineg" [x] => do
+    let v ← mExprWI sym ind x
+    let t ← freshMWI
+    emitM s!"{ind}IF LM2Wide.INeg({v}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .prim "isign" [x] => do
+    let v ← mExprWI sym ind x
+    let t ← freshMWI
+    emitM s!"{ind}IF LM2Wide.ISign({v}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .bin op a b => do
+    let x ← mExprWI sym ind a
+    let y ← if op == "ipow" then mExprW sym ind b else mExprWI sym ind b
+    let t ← freshMWI
+    let p := match op with | "iadd" => "IAdd" | "isub" => "ISub" | "imul" => "IMul" | _ => "IPow"
+    emitM s!"{ind}IF LM2Wide.{p}({x}, {y}, {t}) THEN RETURN Overflow END;"
+    return t
+  | .ite c th el => do
+    let x ← mExprW sym ind c
+    let t ← freshMWI
+    emitM s!"{ind}IF NOT LM2Wide.IsZero({x}) THEN"
+    let r1 ← mExprWI sym (ind ++ "  ") th
+    emitM s!"{ind}  {t} := {r1}"
+    emitM s!"{ind}ELSE"
+    let r2 ← mExprWI sym (ind ++ "  ") el
+    emitM s!"{ind}  {t} := {r2}"
+    emitM s!"{ind}END;"
+    return t
+  | .fold op id lo hi incl filt body => do
+    let l ← mExprW sym ind lo
+    let h ← mExprW sym ind hi
+    let lb ← freshM
+    let hb ← freshM
+    let t ← freshMWI
+    let v := s!"v{id}"
+    declM v
+    emitM s!"{ind}IF LM2Wide.Get({l}, {lb}) OR LM2Wide.Get({h}, {hb}) THEN RETURN Overflow END;"
+    emitM s!"{ind}{t}.neg := FALSE; LM2Wide.Set({t}.m, {if op == "iprod" then "1" else "0"});"
+    emitM s!"{ind}IF {lb} {if incl then "<=" else "<"} {hb} THEN"
+    emitM s!"{ind}  {v} := {lb};"
+    emitM s!"{ind}  LOOP"
+    let ind2 := ind ++ "    "
+    let f ← mExprW sym ind2 filt
+    emitM s!"{ind2}IF NOT LM2Wide.IsZero({f}) THEN"
+    let ind3 := ind2 ++ "  "
+    let b ← mExprWI sym ind3 body
+    emitM s!"{ind3}IF LM2Wide.{if op == "iprod" then "IMul" else "IAdd"}({t}, {b}, {t}) THEN RETURN Overflow END"
+    emitM s!"{ind2}END;"
+    emitM s!"{ind2}IF {if incl then s!"{v} = {hb}" else s!"{v} + 1 = {hb}"} THEN EXIT END;"
+    emitM s!"{ind2}INC({v})"
+    emitM s!"{ind}  END"
+    emitM s!"{ind}END;"
+    return t
+  | _ => do
+    emitM "ILL-TYPED MathIR integer node (deliberate syntax error: fail closed)"
+    return "0"
+end
+
+def mParamsW (arity : Nat) : String :=
+  let as := ", ".intercalate ((List.range arity).map (s!"a{·}"))
+  s!"VAR {as}: LM2Wide.Wide; VAR out: LM2Wide.Wide"
+
+def mProcedureW (sym : Name → String) (n : Name) (d : FnDef) : String :=
+  let body : MGM Unit := do
+    match d with
+    | .direct _ e =>
+      let r ← mExprW sym "  " e
+      emitM s!"  out := {r};"
+    | .recur _ j bases step =>
+      let K := bases.length
+      declM "i"; declM "nrec"; declMW "nv"
+      emitM s!"  IF LM2Wide.Get(a{j}, nrec) THEN RETURN Overflow END;"
+      for h : c in [0:K] do
+        declMW s!"w{c}"
+        let r ← mExprW sym "  " bases[c]!
+        emitM s!"  w{c} := {r};"
+      for c in List.range K do
+        emitM s!"  IF nrec = {c} THEN out := w{c}; RETURN Ok END;"
+      emitM "  i := 0;"
+      emitM "  LOOP"
+      let r ← mExprW sym "    " step
+      emitM s!"    nv := {r};"
+      for c in List.range (K - 1) do
+        emitM s!"    w{c} := w{c + 1};"
+      emitM s!"    w{K - 1} := nv;"
+      emitM s!"    IF i = nrec - {K} THEN EXIT END;"
+      emitM "    INC(i)"
+      emitM "  END;"
+      emitM s!"  out := w{K - 1};"
+    emitM "  RETURN Ok"
+  let st := (body.run {}).2
+  s!"(* Lean: {n} (wide fallback: exact, LM2Wide) *)\nPROCEDURE {sym n}W ({mParamsW d.arity}) : INTEGER;\n{mVarDecl st}BEGIN\n" ++
+    "\n".intercalate st.lines.toList ++ s!"\nEND {sym n}W;\n"
+
+/-- Public entry: fast path; on overflow, exact recomputation; the result is returned iff it fits. -/
+def mWrapper (sym : Name → String) (n : Name) (d : FnDef) : String :=
+  let ks := List.range d.arity
+  let wide := ", ".intercalate (ks.map (s!"A{·}") ++ ["R"])
+  let sets := String.join (ks.map fun k => s!"  LM2Wide.Set(A{k}, a{k});\n")
+  let fastArgs := ", ".intercalate (ks.map (s!"a{·}") ++ ["out"])
+  let wideArgs := ", ".intercalate (ks.map (s!"A{·}") ++ ["R"])
+  s!"PROCEDURE {sym n} ({mParams d.arity}) : INTEGER;\nVAR\n  s: INTEGER; v: LONGCARD;\n  {wide}: LM2Wide.Wide;\nBEGIN\n" ++
+  s!"  s := {sym n}Fast({fastArgs});\n  IF s # Overflow THEN RETURN s END;\n" ++ sets ++
+  s!"  IF {sym n}W({wideArgs}) # Ok THEN RETURN Overflow END;\n  IF LM2Wide.Get(R, v) THEN RETURN Overflow END;\n  out := v; RETURN Ok\nEND {sym n};\n"
 
 /-- Lookback offsets `j` used by a step (as `prev j`), de-duplicated: Lean's compiler shares
 identical calls within an expression, so each distinct `f (m + j)` is one call. -/
@@ -1376,8 +1861,9 @@ set_option maxHeartbeats 0 in
   let hdr := "/* Generated by lean-m2/tools/mathir_body.lean (MathIR v2). Do not edit. */\n#ifndef LM2_GEN_H\n#define LM2_GEN_H\n#include <stdint.h>\n#define LM2_OK 0\n#define LM2_OVERFLOW 1\n#define LM2_ERR_NULL (-1)\n" ++
     String.join (order.toList.map fun n => s!"int32_t {cSym n}({cParams (defs.get! n).arity});\n#define LM2_FN_{symOf.get! n} {idxOf.get! n}u\n") ++
     "int32_t lm2_gen_call(uint32_t fn, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t *out);\nuint32_t lm2_gen_count(void);\n#endif\n"
-  let cBody := "/* Generated by lean-m2/tools/mathir_body.lean (MathIR v2). Do not edit.\n   Compiled only by CompCert. Every operation is checked (lm2_nat.h). */\n#include \"lm2_nat.h\"\n#include \"lm2_gen.h\"\n\n" ++
-    String.join (order.toList.map fun n => cFunction cSym n (defs.get! n) ++ "\n") ++
+  let cBody := "/* Generated by lean-m2/tools/mathir_body.lean (MathIR v2). Do not edit.\n   Compiled only by CompCert. Every operation is checked (lm2_nat.h). */\n#include \"lm2_nat.h\"\n#include \"lm2_wide.h\"\n#include \"lm2_gen.h\"\n\n" ++
+    String.join (order.toList.map fun n =>
+      cFunctionW cSym n (defs.get! n) ++ "\n" ++ cFunction cSym n (defs.get! n) ++ "\n" ++ cWrapper cSym n (defs.get! n) ++ "\n") ++
     "int32_t lm2_gen_call(uint32_t fn, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t *out) {\n  (void)a0; (void)a1; (void)a2;\n  switch (fn) {\n" ++
     String.join (order.toList.mapIdx fun i n =>
       let as := (List.range (defs.get! n).arity).map (s!"a{·}")
@@ -1390,8 +1876,9 @@ set_option maxHeartbeats 0 in
     String.join (order.toList.mapIdx fun i n => s!"  Fn{symOf.get! n} = {i};\n") ++
     String.join (order.toList.map fun n => s!"PROCEDURE {mSym n} ({mParams (defs.get! n).arity}) : INTEGER;\n") ++
     "PROCEDURE Call (fn: CARDINAL; a0, a1, a2: LONGCARD; VAR out: LONGCARD) : INTEGER;\nEND LM2Gen.\n"
-  let mMod := "IMPLEMENTATION MODULE LM2Gen;\n(* Generated by lean-m2/tools/mathir_body.lean (MathIR v2). Do not edit. *)\nIMPORT LM2Nat;\n\n" ++
-    String.join (order.toList.map fun n => mProcedure mSym n (defs.get! n) ++ "\n") ++
+  let mMod := "IMPLEMENTATION MODULE LM2Gen;\n(* Generated by lean-m2/tools/mathir_body.lean (MathIR v2). Do not edit. *)\nIMPORT LM2Nat, LM2Wide;\n\n" ++
+    String.join (order.toList.map fun n =>
+      mProcedureW mSym n (defs.get! n) ++ "\n" ++ mProcedure mSym n (defs.get! n) ++ "\n" ++ mWrapper mSym n (defs.get! n) ++ "\n") ++
     "PROCEDURE Call (fn: CARDINAL; a0, a1, a2: LONGCARD; VAR out: LONGCARD) : INTEGER;\nBEGIN\n  CASE fn OF\n" ++
     String.join (order.toList.mapIdx fun i n =>
       let as := (List.range (defs.get! n).arity).map (s!"a{·}")

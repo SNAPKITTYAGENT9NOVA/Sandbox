@@ -13,12 +13,13 @@ on:
     branches: [main]
     paths: ['lean-m2/tools/mathir_body.lean', 'lean-m2/g3/gen/**', 'lean-m2/g3/slice001/**', 'lean-m2/scripts/annotate.sh', '.github/workflows/lean-m2-mathir.yml']
   workflow_dispatch:
+  workflow_call:          # used by the release workflow (lean-m2-release.yml)
 
 permissions:
   contents: read
 
 concurrency:
-  group: lean-m2-mathir-${{ github.ref }}
+  group: lean-m2-mathir-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -92,6 +93,7 @@ jobs:
         run: |
           lake exe cache get 2>&1 | tail -3
           lake build 2>&1 | tail -5
+          mkdir -p "$EVID" && lake --version | head -1 | tee "$EVID/lake-version.txt"
 
       - name: MathIR export, codegen and reference vectors
         working-directory: corpus

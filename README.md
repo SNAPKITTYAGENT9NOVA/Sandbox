@@ -13,7 +13,7 @@ provenance is kept. The target is AArch64 Linux.
 | G0 | Toolchain probe: CompCert 3.18, gm2, Lean, linked ABI probe | **PASS** (toolchain-only), native AArch64 | CI `lean-m2 workstation (G0)` |
 | G1 | Corpus inventory: hashes, Lean headers, import graph, Lake targets | **PASS**, Lean-native tool | `lean-m2/corpus.lock.yaml`, `EVIDENCE.sha256` |
 | G2 | `lake build` + Lean-native declaration and axiom ledger | **PASS**: 17,232 constants; 12,390 `LEAN_VERIFIED`, 4,842 `BLOCKED` | `lean-m2/corpus/formal-conjectures/84cf7f8/g2-headline.json` |
-| G3–G6 | Extraction → CompCert → Modula-2 → differential test | **MathIR v7 generator PASS**: 171 of 246 `ℕᵏ→ℕ` definitions generated as CompCert C + native Modula-2 (loops, sums/products/counts/maxima/lcm over ranges, divisors, primes and images, predicates and Bool, number-theory and digit builtins, checked ℤ subterms, exact ℚ subterms, range-based lists, `let`, lookback recursion); 0 unsound and 0 incomplete in 16,723 cases (exact wide fallback when 64 bits overflow); SLICE-001 acceptance passes on generated code. Release gate not built | `lean-m2/g3/gen/LEDGER.json` |
+| G3–G6 | Extraction → CompCert → Modula-2 → differential test | **MathIR v7 generator PASS**: 171 of 246 `ℕᵏ→ℕ` definitions generated as CompCert C + native Modula-2 (loops, sums/products/counts/maxima/lcm over ranges, divisors, primes and images, predicates and Bool, number-theory and digit builtins, checked ℤ subterms, exact ℚ subterms, range-based lists, `let`, lookback recursion); 0 unsound and 0 incomplete in 16,723 cases (exact wide fallback when 64 bits overflow); SLICE-001 acceptance passes on generated code. **Release gate PASS** (39 fail-closed checks; packaged by `lean-m2-release.yml`) | `lean-m2/g3/gen/LEDGER.json` |
 
 **Corpus:** [google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures)
 @ `84cf7f8` (1,777 `.lean` files, Lean 4.33.1, Mathlib v4.33.1).
@@ -26,7 +26,7 @@ provenance is kept. The target is AArch64 Linux.
 
 ```
 lean-m2/
-  toolchain.lock.yaml     frozen contract lockfile (REQUIRED = still unmeasured)
+  toolchain.lock.yaml     frozen contract lockfile (fully measured; re-checked by the release gate)
   corpus.lock.yaml        corpus commit, hashes, dependency pins, G1/G2 results
   workstation.lock.yaml   container image pins (CompCert source commit, Coq, OCaml)
   corpus/…/84cf7f8/       EVIDENCE.sha256 (pins regenerated inventory), g2-headline.json

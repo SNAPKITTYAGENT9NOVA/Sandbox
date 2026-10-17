@@ -13,7 +13,7 @@ machine-readable evidence and blocks on anything unmeasured.
 | **G3** extraction to C | **MathIR v7 generator**: 171 of 246 `ℕᵏ→ℕ` definitions translated from Lean's equation lemmas (75 blocked, each with its reason in the ledger); 0 IR-vs-Lean fidelity mismatches | `g3/gen/LEDGER.json` |
 | **G4** CompCert build | **PASS**: SLICE-001 and all generated code (ccomp 3.18, AArch64 ELF) | `g3/slice001/LEDGER.json`, `g3/gen/LEDGER.json` |
 | **G5** Modula-2 | **PASS**: generated native Modula-2 (`LM2Gen`) + C binding, gm2 13.3.0 ISO | `g3/gen/LEDGER.json` |
-| **G6** differential testing and release | **0 unsound, 0 incomplete** in 16,723 generated-code cases (exact 4224-bit fallback when the 64-bit path overflows; 4,548 inputs skipped over budget); SLICE-001 acceptance passes on generated code; release gate not built | `g3/gen/LEDGER.json` |
+| **G6** differential testing and release | **0 unsound, 0 incomplete** in 16,723 generated-code cases (exact 4224-bit fallback when the 64-bit path overflows; 4,548 inputs skipped over budget); SLICE-001 acceptance passes on generated code; **release gate PASS** (39 fail-closed checks, `release/gate.py`) | `g3/gen/LEDGER.json` |
 
 ## Frozen corpus
 
@@ -105,9 +105,28 @@ Linux/macOS: `workstation/lean-m2.sh` has the same commands. VS Code: `.devconta
 
 All three publish their key evidence as check-run annotations, and upload full evidence as artifacts.
 
+## Releases (G6)
+
+`lean-m2-release.yml` rebuilds everything from the commit (it calls the MathIR workflow), measures the
+toolchain inside the pinned image (`scripts/measure-toolchain.sh`), and runs `release/gate.py`. The gate
+records every check as PASS / BLOCKED in `gate-report.txt` and writes the package only if all pass:
+
+- the measured toolchain equals `toolchain.lock.yaml`, which has no unmeasured fields;
+- G1 / G2 PASS and the ledger's corpus commit is the locked one;
+- the IR agrees with Lean's compiled definitions on every evaluated input, and coverage and case counts
+  equal the ledger;
+- the generated sources match their hashes; C and Modula-2 are sound and complete on every Lean
+  reference case; SLICE-001's acceptance test passes on the generated code;
+- every compiled object is AArch64 and byte-identical to the one in the ledger.
+
+The package `lean-m2-<version>-aarch64-linux.tar.gz` (deterministic; `SHA256SUMS`, `MANIFEST.json`)
+holds the C and Modula-2 sources, the compiled objects, and the evidence. Run the workflow by hand to
+get it as an artifact, or **publish a GitHub release** (e.g. tag `v1.0.0`): the workflow then attaches
+the package, `SHA256SUMS` and the gate report to that release. A blocked gate attaches nothing.
+
 ## Lockfiles
 
-- `toolchain.lock.yaml`: the frozen contract lockfile (schema 1.0.0). `REQUIRED` fields are blockers until measured.
+- `toolchain.lock.yaml`: the frozen contract lockfile (schema 1.0.0). Every field is now measured (`scripts/measure-toolchain.sh`); the release gate re-measures the toolchain and blocks on any difference.
 - `corpus.lock.yaml`: corpus commit, file hashes, dependency pins, per-directory tree hashes, and the G1/G2 status and open items.
 - `workstation.lock.yaml`: image pins, with the rationale for the CompCert pin.
 
@@ -115,7 +134,8 @@ All three publish their key evidence as check-run annotations, and upload full e
 
 - Ledger the `postpone` build variant.
 - Record the base-image and published-image digests.
-- Widen the MathIR fragment toward the largest remaining blocked classes (recursive ℚ helpers and Bernoulli numbers, sets of pairs / subsets (`×ˢ`, `powerset`), `Finset.card`/`sup` over non-ℕ types, `Fintype.card`, `List` folds, `Finset.lcm`), then re-measure coverage.
+- Widen the MathIR fragment toward the largest remaining blocked classes (recursive ℚ helpers and Bernoulli numbers, sets of pairs / subsets (`×ˢ`, `powerset`), `Finset.card`/`sup` over non-ℕ types, `Fintype.card`, prime-factor lists, `Nat.find`), then re-measure coverage.
+- Declare a license for this repository's own code (the release NOTICE states that none is granted yet).
 
 Resolved:
 - **The `lcProof` dependent** is a compiler-generated `unsafe` auxiliary (`Nat.primeFactorsEq.unsafe_1`).

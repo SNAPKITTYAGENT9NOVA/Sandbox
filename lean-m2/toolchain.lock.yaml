@@ -6,6 +6,7 @@ contract:
   fail_closed: true
 
 source:
+  # Toolchain fields formerly REQUIRED were measured by scripts/measure-toolchain.sh in release-gate run 39069817036 (2026-10-17).
   # Observed 2026-10-14 from google-deepmind/formal-conjectures @ 84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88.
   # Full corpus identity and per-directory inventory: corpus.lock.yaml.
   language: Lean4
@@ -20,7 +21,7 @@ lean:
   executable: lean
   version: "4.33.1 (819816b2e0a3bf405af45ae5c7af2491d8f5bee6)"   # observed in G2 and SLICE-001 runs
   lake_executable: lake
-  lake_version: REQUIRED
+  lake_version: "Lake version 5.0.0-src+819816b (Lean version 4.33.1)"
   dependency_lock: lake-manifest.json
   kernel_validation: required
   unresolved_imports: reject
@@ -28,7 +29,7 @@ lean:
 
 mathir:
   schema_version: "1.0.0"
-  canonical_serialization: REQUIRED
+  canonical_serialization: "mathir.json = Lean Json.pretty, UTF-8, trailing LF; byte-reproducibility enforced by gen.sha256 across CI jobs and by the release gate"
   stable_declaration_ids: true
   preserve_source_locations: true
   preserve_dependencies: true
@@ -42,32 +43,32 @@ compcert:
   architecture: AArch64
   abi: AAPCS
   c_language: C99
-  compiler_path: REQUIRED
-  compiler_sha256: REQUIRED
-  configuration_sha256: REQUIRED
+  compiler_path: "/opt/compcert/bin/ccomp"
+  compiler_sha256: "29df33a7881222230dfa2969c087a98fa0a58a5ca3b34ebae0b8a0b24eb65778"
+  configuration_sha256: "375d885c2248d8130edfa864be9535fe7f9e074ca029990f03370f48deb2150e"
   external_toolchain:
-    preprocessor: REQUIRED
-    assembler: REQUIRED
-    linker: REQUIRED
-    sysroot: REQUIRED
-    target_triple: REQUIRED
+    preprocessor: "gcc | /usr/bin/aarch64-linux-gnu-gcc-13 | sha256:a20520ee21543f243d40636a9181a142c45ecd989de31ab86b99a8ea5ada870d"
+    assembler: "gcc | /usr/bin/aarch64-linux-gnu-gcc-13 | sha256:a20520ee21543f243d40636a9181a142c45ecd989de31ab86b99a8ea5ada870d"
+    linker: "gcc | /usr/bin/aarch64-linux-gnu-gcc-13 | sha256:a20520ee21543f243d40636a9181a142c45ecd989de31ab86b99a8ea5ada870d"
+    sysroot: "/"
+    target_triple: "aarch64-linux-gnu"
   unsupported_constructs: reject
   compiler_substitution: forbidden
 
 modula2:
   compiler: gm2
   version: "13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1)"   # observed, SLICE-001 run 38686128245
-  executable_path: REQUIRED
-  executable_sha256: REQUIRED
+  executable_path: "/usr/bin/aarch64-linux-gnu-gm2-13"
+  executable_sha256: "eda2ef7c01ea98b3636dd29e073e111dd005cbc38b6c393919a6ba621e0af012"
   gcc_version: "13.3.0"                     # observed
   target_triple: aarch64-linux-gnu          # observed (gm2 -dumpmachine)
   object_format: ELF
   target_architecture: AArch64
   target_os: Linux
   language_dialect: ISO                     # selected and used (gm2 -fiso)
-  runtime_library: REQUIRED
-  runtime_version: REQUIRED
-  standard_library_fingerprint: REQUIRED
+  runtime_library: "/usr/lib/gcc/aarch64-linux-gnu/13/libm2iso.a"
+  runtime_version: "13.3.0"
+  standard_library_fingerprint: "sha256:0cdb22b2c6a3b8f5adda7082260960a6cad146acc0f92ebbc7433aad7b745cc8 over 5 libm2*.a in /usr/lib/gcc/aarch64-linux-gnu/13"
 
 abi:
   contract_version: "1.0.0"

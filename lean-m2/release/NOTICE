@@ -1,3 +1,6 @@
+SPDX-License-Identifier: AGPL-3.0-only
+Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
+
 LEAN-M2-CC-001 release package — notices
 
 Source definitions
@@ -12,5 +15,7 @@ Toolchain
   their output, not the compilers or the gm2 runtime libraries (link against your installed gm2).
 
 License of this package's own code
-  The repository that produced this package does not currently declare a license. Until it does,
-  no license to the generated runtime and glue code is granted by this notice.
+  GNU Affero General Public License v3.0 only (AGPL-3.0-only); full text in LICENSE.
+  Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project).
+  The upstream sources named above remain under the Apache License 2.0, which is compatible with
+  the AGPL v3.

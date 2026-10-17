@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) */
 /* LEAN-M2-CC-001 MathIR wide runtime: exact fixed-capacity multi-precision ℕ and ℤ.
  *
  * Used only as the FALLBACK of a generated function: when its fast 64-bit evaluation reports

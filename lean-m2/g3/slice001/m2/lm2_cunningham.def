@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 DEFINITION MODULE FOR "C" lm2_cunningham;
 (* Binding to the CompCert-compiled C implementation (c/lm2_cunningham.c).
    EXPORT UNQUALIFIED is required for bare C symbol names (ABI rule found in G0). *)

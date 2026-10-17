@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 # LEAN-M2-CC-001 workstation launcher for Linux / macOS hosts (Docker).
 # Mirrors lean-m2.ps1:  setup [--build] | probe [project] | shell | info
 # Data root: $LEAN_M2_DATA (default ~/lean-m2). Emulated hosts need LEAN_M2_ALLOW_EMULATION=1.

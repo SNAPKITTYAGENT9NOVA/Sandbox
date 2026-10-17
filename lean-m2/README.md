@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) -->
 # lean-m2: LEAN-M2-CC-001 pipeline
 
 This folder holds the pipeline that reconstructs the Lean 4 corpus below as native Modula-2.
@@ -135,7 +137,6 @@ the package, `SHA256SUMS` and the gate report to that release. A blocked gate at
 - Ledger the `postpone` build variant.
 - Record the base-image and published-image digests.
 - Widen the MathIR fragment toward the largest remaining blocked classes (recursive ℚ helpers and Bernoulli numbers, sets of pairs / subsets (`×ˢ`, `powerset`), `Finset.card`/`sup` over non-ℕ types, `Fintype.card`, prime-factor lists, `Nat.find`), then re-measure coverage.
-- Declare a license for this repository's own code (the release NOTICE states that none is granted yet).
 
 Resolved:
 - **The `lcProof` dependent** is a compiler-generated `unsafe` auxiliary (`Nat.primeFactorsEq.unsafe_1`).

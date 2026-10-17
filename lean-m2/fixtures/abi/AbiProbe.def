@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 DEFINITION MODULE AbiProbe;
 (* G0/G5 ABI fixture. Scalars and caller-owned buffers only (no aggregates by value). *)
 FROM SYSTEM IMPORT ADDRESS;

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) */
 /* LEAN-M2-CC-001 ABI fixture. Compiled ONLY by ccomp (CompCert).
  * C99, fixed-width scalars, caller-owned buffers with explicit lengths,
  * no struct/union passed or returned by value (CompCert AArch64 ABI restriction). */

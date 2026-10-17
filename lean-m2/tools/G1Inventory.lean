@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
+-- Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 /-
 LEAN-M2-CC-001 · G1 inventory, implemented in Lean (inventory schema 2.0.0).
 

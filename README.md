@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) -->
 # LEAN-M2-CC-001: Lean 4 → Modula-2 mathematical library
 
 This repository builds the pipeline that reconstructs a Lean 4 mathematical library as native
@@ -43,3 +45,8 @@ lean-m2/
 This is a fork of [jamiedevera/Sandbox](https://github.com/jamiedevera/Sandbox), a Next.js web app
 whose original README stated MIT licensing. The app and its leftovers were removed. They remain in
 git history and upstream.
+
+## License
+
+AGPL-3.0-only (`LICENSE`). Every source file carries an SPDX header; JSON data files are covered by `REUSE.toml`.
+The translated definitions come from google-deepmind/formal-conjectures (Apache-2.0).

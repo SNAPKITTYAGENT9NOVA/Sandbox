@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
 # check=skip=FromPlatformFlagConstDisallowed
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 # (linux/arm64 is the contract target, so the constant platform is intentional.)
 # LEAN-M2-CC-001 workstation image: AArch64 Linux with Lean 4 (elan), GNU Modula-2, CompCert 3.18.
 #

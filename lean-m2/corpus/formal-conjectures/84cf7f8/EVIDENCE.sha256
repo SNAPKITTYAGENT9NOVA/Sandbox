@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 # SHA-256 of the G1 inventory (schema 2.0.0) regenerated from google-deepmind/formal-conjectures @ 84cf7f8
 # by lean-m2/tools/G1Inventory.lean under Lean 4.33.1 (819816b). Observed in CI run 38678453308.
 # Files are not stored in git; CI regenerates them and fails if any hash differs.

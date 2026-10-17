@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 {
   "name": "lean-m2 (AArch64: Lean 4 / gm2 / CompCert 3.18)",
   "build": {

@@ -107,7 +107,7 @@ All three publish their key evidence as check-run annotations, and upload full e
 
 ## Lockfiles
 
-- `toolchain.lock.yaml`: the frozen contract lockfile (schema 1.0.0). `REQUIRED` fields are blockers until measured.
+- `toolchain.lock.yaml`: the frozen contract lockfile (schema 1.0.0). Every field is now measured (`scripts/measure-toolchain.sh`); the release gate re-measures the toolchain and blocks on any difference.
 - `corpus.lock.yaml`: corpus commit, file hashes, dependency pins, per-directory tree hashes, and the G1/G2 status and open items.
 - `workstation.lock.yaml`: image pins, with the rationale for the CompCert pin.
 

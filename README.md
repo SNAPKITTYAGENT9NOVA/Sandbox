@@ -26,7 +26,7 @@ provenance is kept. The target is AArch64 Linux.
 
 ```
 lean-m2/
-  toolchain.lock.yaml     frozen contract lockfile (REQUIRED = still unmeasured)
+  toolchain.lock.yaml     frozen contract lockfile (fully measured; re-checked by the release gate)
   corpus.lock.yaml        corpus commit, hashes, dependency pins, G1/G2 results
   workstation.lock.yaml   container image pins (CompCert source commit, Coq, OCaml)
   corpus/…/84cf7f8/       EVIDENCE.sha256 (pins regenerated inventory), g2-headline.json

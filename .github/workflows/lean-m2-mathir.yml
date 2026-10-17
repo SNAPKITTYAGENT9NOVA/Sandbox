@@ -131,7 +131,7 @@ jobs:
         if: always()
         run: |
           A=lean-m2/scripts/annotate.sh
-          [ -f "$EVID/gen/report.txt" ] && $A notice "MathIR report" "$EVID/gen/report.txt" 200
+          [ -f "$EVID/gen/report.txt" ] && $A notice "MathIR report" "$EVID/gen/report.txt" 400
           [ -f "$EVID/gen/blocked.txt" ] && $A notice "MathIR blocked" "$EVID/gen/blocked.txt" 300
           if [ -f "$EVID/gen/progress.log" ]; then
             { grep -E 'candidates=|done' "$EVID/gen/progress.log"; echo '--- slowest steps ---';

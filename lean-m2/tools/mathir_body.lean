@@ -689,6 +689,17 @@ partial def source (c : Ctx) (id : Nat) (s : Expr) : TrM (E × E × Bool × E ×
     let first := E.cmp "eq" earlier (.lit 0)
     let filt := match f0 with | .lit 1 => first | _ => .and f0 first
     return (lo, hi, incl, filt, elem)
+  -- MathIR v8: a non-recursive helper ℕ^k → Finset ℕ defined by its body: inline it (bounded depth)
+  if fn != .anonymous && c.depth < 4 then
+    let ci ← getConstInfo fn
+    if let some v := ci.value? then
+      let ok ← forallTelescope ci.type fun xs body => do
+        unless body.isAppOfArity `Finset 1 && isNatTy body.appArg! && xs.size == args.size && !xs.isEmpty do
+          return false
+        for x in xs do
+          unless isNatTy (← inferType x) do return false
+        return true
+      if ok then return ← source { c with depth := c.depth + 1 } id (v.beta args)
   bail s!"unsupported Finset source: {fn}"
 
 /-- A list of ℕ built from a range: `(lo, hi, inclusive, filter, elem)` like `source`, but in list
@@ -715,6 +726,17 @@ partial def lsource (c : Ctx) (id : Nat) (l : Expr) : TrM (E × E × Bool × E �
     return (.lit 0, .prim "bigomega" [← tr c args[0]!], false, .lit 1, pfElem args[0]!)
   if fn == `Nat.digits && args.size == 2 then
     return (.lit 0, .prim "diglen" [← tr c args[0]!, ← tr c args[1]!], false, .lit 1, digElem args[0]! args[1]!)
+  -- MathIR v8: a non-recursive helper ℕ^k → List ℕ defined by its body: inline it (bounded depth)
+  if fn != .anonymous && c.depth < 4 then
+    let ci ← getConstInfo fn
+    if let some v := ci.value? then
+      let ok ← forallTelescope ci.type fun xs body => do
+        unless body.isAppOfArity ``List 1 && isNatTy body.appArg! && xs.size == args.size && !xs.isEmpty do
+          return false
+        for x in xs do
+          unless isNatTy (← inferType x) do return false
+        return true
+      if ok then return ← lsource { c with depth := c.depth + 1 } id (v.beta args)
   bail s!"unsupported list: {fn}"
 
 end

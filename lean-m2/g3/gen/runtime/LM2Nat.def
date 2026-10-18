@@ -27,6 +27,8 @@ PROCEDURE Log (b, n: LONGCARD) : LONGCARD;                      (* 0 if b <= 1 o
 PROCEDURE Log2 (n: LONGCARD) : LONGCARD;                        (* Log(2, n) *)
 PROCEDURE PadicVal (p, n: LONGCARD) : LONGCARD;                 (* 0 if p <= 1 or n = 0 *)
 PROCEDURE BigOmega (n: LONGCARD) : LONGCARD;                    (* prime factors with multiplicity *)
+PROCEDURE PfNth (n, k: LONGCARD) : LONGCARD;                    (* (primeFactorsList n)[k], 0 past the end *)
+PROCEDURE DigAt (b, n, k: LONGCARD) : LONGCARD;                 (* (Nat.digits b n)[k], 0 past the end *)
 PROCEDURE DigSum (b, n: LONGCARD) : LONGCARD;                   (* sum of Nat.digits b n *)
 PROCEDURE DigLen (b, n: LONGCARD) : LONGCARD;                   (* length of Nat.digits b n *)
 PROCEDURE DigRev (b, n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* ofDigits b (digits b n).reverse *)

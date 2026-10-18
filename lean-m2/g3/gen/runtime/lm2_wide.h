@@ -233,6 +233,20 @@ static int lm2w_bigomega(const lm2w *n, lm2w *r) {
   uint64_t x; if (lm2w_get(n, &x)) return 1;
   lm2w_set(r, lm2_bigomega(x)); return 0;
 }
+static int lm2w_pfnth(const lm2w *n, const lm2w *k, lm2w *r) {   /* n must fit 64 bits */
+  uint64_t x, j; if (lm2w_get(n, &x)) return 1;
+  if (lm2w_get(k, &j)) { r->n = 0u; return 0; }                   /* k >= 2^64 > Omega(n) */
+  lm2w_set(r, lm2_pfnth(x, j)); return 0;
+}
+static int lm2w_digat(const lm2w *b, const lm2w *n, const lm2w *k, lm2w *r) {
+  lm2w m = *n, q, d, one; uint64_t j;
+  lm2w_set(&one, 1u);
+  if (b->n == 0u) { if (k->n == 0u) *r = *n; else r->n = 0u; return 0; }
+  if (lm2w_cmp(b, &one) == 0) { lm2w_set(r, lm2w_cmp(k, n) < 0 ? 1u : 0u); return 0; }
+  if (lm2w_get(k, &j)) { r->n = 0u; return 0; }                   /* k >= 2^64 > bit length of n */
+  while (j > 0u && m.n != 0u) { lm2w_divmod(&m, b, &q, &d); m = q; j--; }
+  lm2w_divmod(&m, b, &q, &d); *r = d; return 0;
+}
 static int lm2w_dvd(const lm2w *a, const lm2w *b, lm2w *r) {
   lm2w m;
   if (a->n == 0u) { lm2w_set(r, b->n == 0u ? 1u : 0u); return 0; }

@@ -211,6 +211,40 @@ BEGIN
   RETURN k
 END BigOmega;
 
+PROCEDURE PfNth (n, k: LONGCARD) : LONGCARD;
+VAR
+  m, d, j: LONGCARD;
+BEGIN
+  IF n <= 1 THEN RETURN 0 END;
+  m := n; d := 2; j := k;
+  WHILE d <= m DIV d DO
+    WHILE m MOD d = 0 DO
+      IF j = 0 THEN RETURN d END;
+      m := m DIV d; DEC(j)
+    END;
+    INC(d)
+  END;
+  IF (m > 1) AND (j = 0) THEN RETURN m END;
+  RETURN 0
+END PfNth;
+
+PROCEDURE DigAt (b, n, k: LONGCARD) : LONGCARD;
+VAR
+  m, j: LONGCARD;
+BEGIN
+  IF b = 0 THEN
+    IF k = 0 THEN RETURN n END;
+    RETURN 0
+  END;
+  IF b = 1 THEN
+    IF k < n THEN RETURN 1 END;
+    RETURN 0
+  END;
+  m := n; j := k;
+  WHILE (j > 0) AND (m > 0) DO m := m DIV b; DEC(j) END;
+  RETURN m MOD b
+END DigAt;
+
 PROCEDURE DigSum (b, n: LONGCARD) : LONGCARD;
 VAR
   s, m: LONGCARD;

@@ -45,6 +45,21 @@ jobs:
           cache-from: type=gha,scope=lean-m2
           cache-to: type=gha,scope=lean-m2,mode=max
 
+      - name: Measure image pins (base-image digest, Menhir)
+        if: always()
+        run: |
+          set -uo pipefail
+          mkdir -p results
+          ref=$(awk '/^FROM /{for(i=1;i<=NF;i++) if($i !~ /^--/ && $i != "FROM"){print $i; exit}}' lean-m2/docker/Dockerfile)
+          tag=${ref%%@*}
+          {
+            echo "dockerfile_from $ref"
+            echo "tag_index_digest $(docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["digest"])')"
+            echo "tag_arm64_digest $(docker buildx imagetools inspect "$tag" --raw | python3 -c 'import json,sys;print([m["digest"] for m in json.load(sys.stdin)["manifests"] if m["platform"].get("architecture")=="arm64" and m["platform"].get("os")=="linux"][0])')"
+            echo "menhir $(docker run --rm --platform linux/arm64 "$IMAGE:ci" bash -lc 'eval "$(opam env --switch=default)"; menhir --version' 2>&1 | tail -1)"
+          } | tee results/pins.txt
+          lean-m2/scripts/annotate.sh notice "Image pins (measured)" results/pins.txt 10
+
       - name: G0 probe (toolchain only)
         run: |
           mkdir -p results
@@ -90,3 +105,4 @@ jobs:
           docker push "$IMAGE:main"
           docker push "$IMAGE:${{ github.sha }}"
           docker image inspect "$IMAGE:main" --format '{{json .RepoDigests}}' | tee results/image-digest.json
+          lean-m2/scripts/annotate.sh notice "Published image digest" results/image-digest.json 5

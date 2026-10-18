@@ -23,6 +23,13 @@ concurrency:
 
 jobs:
   g2:
+    # Both `answer( )` elaboration modes the corpus defines: lakefile.toml (always_true, the
+    # default build) and lakefile.extract.toml (postpone, used by the corpus's extraction).
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [always_true, postpone]
+    name: g2 (${{ matrix.variant }})
     runs-on: ubuntu-latest
     timeout-minutes: 340
     env:
@@ -72,6 +79,19 @@ jobs:
             echo "$f got=$got want=$want"; test "$got" = "$want"
           done
 
+      - name: Select the answer( ) build variant
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.variant }}" = postpone ]; then
+            # lakefile.extract.toml is part of the verified source tree; it differs from lakefile.toml
+            # only in weak.google.answer = "postpone"
+            diff <(grep -v '^weak.google.answer' "$CORPUS/lakefile.toml") <(grep -v '^weak.google.answer' "$CORPUS/lakefile.extract.toml")
+            cp "$CORPUS/lakefile.extract.toml" "$CORPUS/lakefile.toml"
+          fi
+          grep '^weak.google.answer' "$CORPUS/lakefile.toml" | tee "$EVID/build-variant.txt"
+          grep -q "\"${{ matrix.variant }}\"" "$EVID/build-variant.txt"
+          echo "CACHE_KEY=fc-build-$COMMIT-$( [ "${{ matrix.variant }}" = always_true ] && echo v1 || echo postpone-v1)" >> "$GITHUB_ENV"
+
       - name: Record toolchain
         working-directory: corpus
         run: |
@@ -84,13 +104,14 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: corpus/.lake/build
-          key: fc-build-${{ env.COMMIT }}-v1
+          key: ${{ env.CACHE_KEY }}
+          restore-keys: fc-build-${{ env.COMMIT }}-
 
       - name: Fetch Mathlib build cache
         working-directory: corpus
         run: lake exe cache get 2>&1 | tail -20
 
-      - name: lake build (default targets, lakefile.toml => weak.google.answer=always_true)
+      - name: lake build (default targets, variant ${{ matrix.variant }})
         working-directory: corpus
         run: |
           set +e
@@ -104,7 +125,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: corpus/.lake/build
-          key: fc-build-${{ env.COMMIT }}-v1
+          key: ${{ env.CACHE_KEY }}
 
       - name: lake test (recorded, not gating)
         working-directory: corpus
@@ -171,15 +192,15 @@ jobs:
         run: |
           A=lean-m2/scripts/annotate.sh
           cd "$GITHUB_WORKSPACE"
-          { cat "$EVID/corpus-commit.txt" "$EVID/lean-version.txt" "$EVID/lake-version.txt" 2>/dev/null;
+          { echo "variant: ${{ matrix.variant }}"; cat "$EVID/build-variant.txt" "$EVID/corpus-commit.txt" "$EVID/lean-version.txt" "$EVID/lake-version.txt" 2>/dev/null;
             echo "build exit: $(cat "$EVID/lake-build.exit" 2>/dev/null)";
             echo "test exit (not gating): $(cat "$EVID/lake-test.exit" 2>/dev/null)";
             echo "extract_names exit: $(cat "$EVID/extract-names.exit" 2>/dev/null)"; } > "$RUNNER_TEMP/a1.txt"
-          $A notice "G2 toolchain and exits" "$RUNNER_TEMP/a1.txt"
-          [ -f "$EVID/g2/g2-headline.json" ] && $A notice "G2 headline" "$EVID/g2/g2-headline.json" 200
+          $A notice "G2 ${{ matrix.variant }} toolchain and exits" "$RUNNER_TEMP/a1.txt"
+          [ -f "$EVID/g2/g2-headline.json" ] && $A notice "G2 ${{ matrix.variant }} headline" "$EVID/g2/g2-headline.json" 200
           if [ -f "$EVID/g2/g3-exact-domain-candidates.txt" ]; then
             head -120 "$EVID/g2/g3-exact-domain-candidates.txt" > "$RUNNER_TEMP/a3.txt"
-            $A notice "G3 exact-domain candidates (first 120)" "$RUNNER_TEMP/a3.txt" 120
+            $A notice "G3 exact-domain candidates ${{ matrix.variant }} (first 120)" "$RUNNER_TEMP/a3.txt" 120
           fi
           if [ "$(cat "$EVID/lake-build.exit" 2>/dev/null)" != 0 ]; then
             grep -n -E 'error|✖' "$EVID/lake-build.log" 2>/dev/null | head -60 > "$RUNNER_TEMP/a2.txt" || true
@@ -202,5 +223,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g2-evidence-${{ env.COMMIT }}
+          name: g2-evidence-${{ env.COMMIT }}-${{ matrix.variant }}
           path: evidence/

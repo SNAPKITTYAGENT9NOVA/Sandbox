@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 # lean-m2 build and probe outputs
 build/
 results/

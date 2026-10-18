@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 name: lean-m2 release (G6 gate)
 
 # LEAN-M2-CC-001 G6: rebuild everything from this commit, verify every gate fail-closed, and package.

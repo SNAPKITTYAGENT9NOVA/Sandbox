@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 DEFINITION MODULE LM2Wide;
 (* LEAN-M2-CC-001 MathIR wide runtime: exact fixed-capacity multi-precision ℕ and ℤ, native
    Modula-2 (same algorithms as lm2_wide.h). Used only as the fallback of a generated procedure

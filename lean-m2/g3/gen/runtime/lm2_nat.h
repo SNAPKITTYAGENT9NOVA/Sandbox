@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) */
 /* LEAN-M2-CC-001 MathIR runtime (v1 core, v2/v3 builtins, v4 ℤ): checked operations on 64-bit unsigned integers with
  * Lean ℕ semantics. Each returns 1 on overflow (result NOT written), 0 otherwise.
  *   sub truncates at 0 (ℕ subtraction)   div: x / 0 = 0   mod: x % 0 = x   pow: 0^0 = 1

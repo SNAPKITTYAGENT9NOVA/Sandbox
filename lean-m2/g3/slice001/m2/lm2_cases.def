@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 DEFINITION MODULE FOR "C" lm2_cases;
 (* Binding to the Lean-generated reference vectors (lm2_cases.c, built by Spec.lean). *)
 FROM SYSTEM IMPORT ADDRESS;

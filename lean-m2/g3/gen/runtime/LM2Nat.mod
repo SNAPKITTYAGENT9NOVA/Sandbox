@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 IMPLEMENTATION MODULE LM2Nat;
 
 CONST

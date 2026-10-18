@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 # LEAN-M2-CC-001 · measure the native toolchain for toolchain.lock.yaml (fail-closed).
 #
 # Runs INSIDE the AArch64 workstation image. Prints one `key<TAB>value` line per measured field

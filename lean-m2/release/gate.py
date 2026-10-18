@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 """LEAN-M2-CC-001 release gate (G6): fail-closed verification and packaging.
 
 Every check is recorded as PASS or BLOCKED in gate-report.txt. The release package is written
@@ -126,6 +128,11 @@ for name, h in sorted(want.items()):
     check(f"object {name}", built.get(name) == "AArch64" and got == h,
           f"machine={built.get(name)} sha256={got} ledger={h}")
 
+# ---- 5. licensing ----
+lic = read(os.path.join(repo, "..", "LICENSE")) or ""
+check("LICENSE (AGPL-3.0)", lic.startswith("GNU AFFERO GENERAL PUBLIC LICENSE") and "Version 3, 19 November 2007" in lic,
+      f"{len(lic)} bytes")
+
 # ---- report; package only if everything passed ----
 os.makedirs(A.dist, exist_ok=True)
 ok = all(s == "PASS" for s, _, _ in checks)
@@ -150,7 +157,7 @@ layout = {
                  (arm, "gen-test.log"), (arm, "acceptance.log"), (arm, "build.log"),
                  (repo, "toolchain.lock.yaml"), (repo, "corpus.lock.yaml"),
                  (os.path.join(repo, "corpus/formal-conjectures/84cf7f8"), "g2-headline.json")],
-    "": [(os.path.join(repo, "release"), "README.md"), (os.path.join(repo, "release"), "NOTICE")],
+    "": [(os.path.join(repo, "release"), "README.md"), (os.path.join(repo, "release"), "NOTICE"), (os.path.join(repo, ".."), "LICENSE")],
 }
 for sub, files in layout.items():
     d = os.path.join(root, sub)
@@ -174,6 +181,7 @@ manifest = {
     "coverage": {"candidates": cand, "translated": trans, "blocked": blk},
     "evidence": {"reference_cases": cases, "fidelity_mismatches": fid, "unsound": 0, "incomplete": 0,
                  "acceptance": "SLICE-001 PASS", "gate_checks": len(checks)},
+    "license": "AGPL-3.0-only",
     "statuses_per_function": ledger.get("statuses_per_translated_function"),
     "not_claimed": ledger.get("not_claimed"),
     "limits": ledger.get("limits"),

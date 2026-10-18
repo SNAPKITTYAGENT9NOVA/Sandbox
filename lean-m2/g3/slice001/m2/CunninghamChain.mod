@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 IMPLEMENTATION MODULE CunninghamChain;
 (* Same algorithm and guards as lm2_cunningham.c; justified by Spec.lean:
      overflow_of_ge_65 (short-circuit) and the per-step guard t <= (MAX - 1) DIV 2. *)

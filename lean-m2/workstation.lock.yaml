@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 # Workstation image pins for LEAN-M2-CC-001.
 # Kept separate from toolchain.lock.yaml so the frozen contract schema (1.0.0) is not modified.
 # Values marked "observed" were measured; REQUIRED values block release until measured on a real build.

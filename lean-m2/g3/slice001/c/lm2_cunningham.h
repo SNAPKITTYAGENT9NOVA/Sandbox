@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) */
 /* LEAN-M2-CC-001 SLICE-001: CunninghamChain.firstKindTerm on 64-bit unsigned integers.
  * Semantic contract: lean-m2/g3/SLICE-001-firstKindTerm.md. ABI: scalars + caller-owned
  * out-pointer only (no aggregates by value), AAPCS64. */

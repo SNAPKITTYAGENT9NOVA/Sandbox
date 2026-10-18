@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) */
 /* LEAN-M2-CC-001 SLICE-001. Compiled ONLY by CompCert (ccomp), C99 subset.
  *
  * Lean source (formal-conjectures @ 84cf7f8, CunninghamChain.lean):

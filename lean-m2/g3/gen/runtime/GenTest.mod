@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 MODULE GenTest;
 (* LEAN-M2-CC-001 MathIR v1 differential driver (hand-written, fixed).
    For every Lean reference case it runs the generated function twice:

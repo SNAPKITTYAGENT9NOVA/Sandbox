@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 MODULE AbiLinkProbe;
 (* Linked + runtime ABI probe: Modula-2 (gm2) <-> C (ccomp), both directions.
    Exit status 0 only if every check passes. *)

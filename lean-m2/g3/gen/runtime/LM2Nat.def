@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 DEFINITION MODULE LM2Nat;
 (* LEAN-M2-CC-001 MathIR runtime (v1 core, v2/v3 builtins, v4 ℤ): checked LONGCARD operations with Lean ℕ semantics.
    Each returns TRUE on overflow (r NOT written), FALSE otherwise.

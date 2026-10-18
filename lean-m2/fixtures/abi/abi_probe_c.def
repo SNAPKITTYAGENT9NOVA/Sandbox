@@ -1,3 +1,5 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
 DEFINITION MODULE FOR "C" abi_probe_c;
 (* Modula-2 view of the CompCert-compiled C fixture abi_probe_c.c.
    Width assumptions (LONGINT = LONGCARD = 64 bit, INTEGER = 32 bit) are

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
 # LEAN-M2-CC-001 MathIR v1: build the GENERATED code with the locked toolchain and run
 #   1. the generic differential test (every translated function vs Lean), and
 #   2. the acceptance test: SLICE-001's own driver and 2,511 cases against the GENERATED firstKindTerm.

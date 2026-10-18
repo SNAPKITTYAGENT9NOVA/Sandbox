@@ -8,7 +8,8 @@ workstation:
   platform: linux/arm64
   base_image:
     reference: ubuntu:24.04
-    digest: REQUIRED            # pin after first pull: docker image inspect --format '{{index .RepoDigests 0}}'
+    digest: sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac   # tag index, observed G0 run 39132300105
+    arm64_manifest_digest: sha256:18b33ff3829707f31ada654a963b9ee35f2e6f0241b964bd17a22a9b330cb63d   # observed, same run
   compcert_source:
     repository: https://github.com/AbsInt/CompCert
     tag: v3.18
@@ -23,7 +24,7 @@ workstation:
   compcert_build_deps:
     ocaml: "4.14.2"
     coq: "8.20.1"               # within CompCert 3.18's documented Coq 8.15.0-8.20.1 range
-    menhir: REQUIRED            # resolved by opam at build time; record observed version
+    menhir: "20260209"          # observed G0 run 39132300105 (menhir --version); pinned in Dockerfile
   gm2:
     source: ubuntu-noble-archive
     package: gm2                # noble archive lists 4:13.2.0-7ubuntu1 (GCC 13.2) with arm64; installed version is recorded by G0

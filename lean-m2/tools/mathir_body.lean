@@ -2590,14 +2590,20 @@ unsafe def refOf (n : Name) (arity : Nat) (kind : Kind) (isPred : Name → Bool 
       let some inst ← synthInstance? (mkApp (mkConst ``Decidable) q) | return none
       return some (← mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) q inst))
     let some lam := lam? | throwError "NOREF no Decidable instance"
-    -- a decision procedure that uses a noncomputable constant cannot be compiled: no reference
-    -- (checked before compiling: the compiler reports this as a logged error, not an exception)
-    if let some bad := lam.getUsedConstants.find? (isNoncomputable (← getEnv)) then
-      throwError "NOREF the decision procedure uses noncomputable {bad}"
     target := `LeanM2.MathIR.ref ++ n
     let lamTy ← inferType lam
     let dv : DefinitionVal := { name := target, levelParams := [], type := lamTy, value := lam, hints := .opaque, safety := .safe }
-    addAndCompile (.defnDecl dv)
+    -- The kernel checks the reference definition (an ill-typed term is a translator bug and fails
+    -- the run). Whether it is executable is the compiler's verdict, and the compiler reports a
+    -- refusal asynchronously, as a message after this command, not as an exception or a log entry
+    -- here. So compile without logging and read the verdict from the generated code: no IR means
+    -- Lean has no executable decision procedure for P, hence no reference, and P is blocked.
+    addDecl (.defnDecl dv)
+    compileDecl (.defnDecl dv) (logErrors := false)
+    if (IR.findEnvDecl (← getEnv) target).isNone then
+      let env ← getEnv
+      let nc := lam.getUsedConstants.filter (isNoncomputable env) |>.toList
+      throwError "NOREF Lean's compiler generates no code for decide (P xs) (noncomputable constants in it: {nc})"
   let env ← getEnv
   let ev (α : Type) : MetaM α := do
     match env.evalConst α {} target (checkMeta := false) with

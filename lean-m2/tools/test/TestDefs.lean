@@ -33,3 +33,8 @@ namespace T
 noncomputable def ncVal (n : Nat) : Nat := Classical.choice ⟨n⟩
 def UsesNc (n : Nat) : Prop := ncVal n < 5
 end T
+namespace T
+/-- no instance of its own; its unfolding is decided by Nat.decidableBallLT, which is marked
+noncomputable but compiles (implemented by the compiler): must translate, not be blocked -/
+def AllSmallOdd2 (n : Nat) : Prop := ∀ k < n, k % 2 = 1 → k ≠ 4
+end T

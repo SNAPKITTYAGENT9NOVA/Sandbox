@@ -28,3 +28,8 @@ namespace T
 /-- no instance of its own: decided through its unfolding (helpers `Small` unfolded too) -/
 def SmallAndBig (n : Nat) : Prop := Small n ∧ n > 2
 end T
+namespace T
+/-- unfolds to a statement about a noncomputable function: no Lean reference, so blocked -/
+noncomputable def ncVal (n : Nat) : Nat := Classical.choice ⟨n⟩
+def UsesNc (n : Nat) : Prop := ncVal n < 5
+end T

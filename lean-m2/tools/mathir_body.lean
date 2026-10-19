@@ -2590,15 +2590,14 @@ unsafe def refOf (n : Name) (arity : Nat) (kind : Kind) (isPred : Name → Bool 
       let some inst ← synthInstance? (mkApp (mkConst ``Decidable) q) | return none
       return some (← mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) q inst))
     let some lam := lam? | throwError "NOREF no Decidable instance"
+    -- a decision procedure that uses a noncomputable constant cannot be compiled: no reference
+    -- (checked before compiling: the compiler reports this as a logged error, not an exception)
+    if let some bad := lam.getUsedConstants.find? (isNoncomputable (← getEnv)) then
+      throwError "NOREF the decision procedure uses noncomputable {bad}"
     target := `LeanM2.MathIR.ref ++ n
     let lamTy ← inferType lam
     let dv : DefinitionVal := { name := target, levelParams := [], type := lamTy, value := lam, hints := .opaque, safety := .safe }
-    try addAndCompile (.defnDecl dv)
-    catch e =>
-      let msg ← e.toMessageData.toString
-      -- the only expected compile failure: the synthesized instance is noncomputable (Classical)
-      if (msg.splitOn "noncomputable").length > 1 then throwError "NOREF Decidable instance is noncomputable"
-      throw e
+    addAndCompile (.defnDecl dv)
   let env ← getEnv
   let ev (α : Type) : MetaM α := do
     match env.evalConst α {} target (checkMeta := false) with
@@ -2692,7 +2691,7 @@ set_option maxHeartbeats 0 in
   -- 2b. Lean references (compiled once per function; a predicate without one is blocked)
   let mut refs : Std.HashMap Name (List Nat → Except String Nat) := {}
   for (n, d) in defs.toList do
-    -- only the two expected NOREF outcomes block; any other exception fails the run
+    -- only the NOREF outcomes block; any other exception fails the run
     match ← (try (Except.ok <$> unsafe refOf n d.arity (kinds.getD n .nat) (fun m => kinds.get? m == some .prop))
              catch e => do
                let m ← e.toMessageData.toString

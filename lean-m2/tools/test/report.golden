@@ -1,4 +1,4 @@
-MATHIR candidates=10 translated=8 blocked=2 cases=1804 ok=1652 overflow=152 skipped_over_budget=0 ir_fidelity_mismatches=0
+MATHIR candidates=11 translated=8 blocked=3 cases=1804 ok=1652 overflow=152 skipped_over_budget=0 ir_fidelity_mismatches=0
 translated:
   T.AllSmallOdd (1-ary, prop)
   T.HasSqBelow (2-ary, prop)
@@ -9,7 +9,8 @@ translated:
   T.anyDiv (1-ary, bool)
   T.sq (1-ary)
 blocked reasons:
-  1  unbounded ∀
+  1  no Lean reference: the decision procedure uses noncomputable T.ncVal
   1  unbounded ∃
+  1  unbounded ∀
 top unsupported constants / predicates / sources:
 

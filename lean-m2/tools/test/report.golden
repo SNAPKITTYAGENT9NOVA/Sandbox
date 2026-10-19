@@ -1,0 +1,17 @@
+MATHIR candidates=12 translated=9 blocked=3 cases=1876 ok=1724 overflow=152 skipped_over_budget=0 ir_fidelity_mismatches=0
+translated:
+  T.AllSmallOdd (1-ary, prop)
+  T.AllSmallOdd2 (1-ary, prop)
+  T.HasSqBelow (2-ary, prop)
+  T.InRange (2-ary, prop)
+  T.Small (1-ary, prop)
+  T.SmallAndBig (1-ary, prop)
+  T.SmallAndEven (1-ary, prop)
+  T.anyDiv (1-ary, bool)
+  T.sq (1-ary)
+blocked reasons:
+  1  no Lean reference: Lean's compiler generates no code for decide (P xs) (noncomputable constants in it: [T.ncVal])
+  1  unbounded ∃
+  1  unbounded ∀
+top unsupported constants / predicates / sources:
+

@@ -1,0 +1,11 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project)
+# Pre-push gate (enable once per clone: git config core.hooksPath .githooks).
+# The repository root has no lakefile, so `lake build` fails here and ./build.sh does the checks.
+echo "Running local build check..."
+lake build || ./build.sh
+if [ $? -ne 0 ]; then
+    echo "Local build failed. Aborting push."
+    exit 1
+fi

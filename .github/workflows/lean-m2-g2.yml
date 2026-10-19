@@ -8,10 +8,10 @@ name: lean-m2 G2 (Lean validation + axiom ledger)
 
 on:
   pull_request:
-    paths: ['lean-m2/tools/**', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
+    paths: ['lean-m2/tools/G1Inventory.lean', 'lean-m2/tools/g2_ledger_body.lean', 'lean-m2/tools/g2_summarize.py', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
   push:
     branches: [main]
-    paths: ['lean-m2/tools/**', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
+    paths: ['lean-m2/tools/G1Inventory.lean', 'lean-m2/tools/g2_ledger_body.lean', 'lean-m2/tools/g2_summarize.py', 'lean-m2/scripts/annotate.sh', 'lean-m2/corpus.lock.yaml', 'lean-m2/corpus/**', '.github/workflows/lean-m2-g2.yml']
   workflow_dispatch:
 
 permissions:

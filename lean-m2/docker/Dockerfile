@@ -14,16 +14,18 @@
 #     8135de0 ("Update CompCert version to match latest release"), which changes ONLY `VERSION`.
 #     The build re-verifies that the tag-to-pin diff touches nothing else.
 #   - Coq 8.20.1 is inside CompCert 3.18's documented range (Coq 8.15.0-8.20.1 / Rocq 9.0-9.2).
-#   - Base image is pinned by tag only; pin by digest in workstation.lock.yaml after first pull.
+#   - Base image is pinned by its multi-arch index digest (measured by G0, run 39132300105);
+#     the arm64 manifest it resolves to is recorded in workstation.lock.yaml.
 #   - gm2 comes from Ubuntu noble's archive; the exact version is recorded by the probe, not assumed.
 
-FROM --platform=linux/arm64 ubuntu:24.04
+FROM --platform=linux/arm64 ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 
 ARG COMPCERT_TAG=v3.18
 ARG COMPCERT_TAG_COMMIT=14d616046360a0b2611ebdfc2f98368af402e1f7
 ARG COMPCERT_COMMIT=8135de0cc006f094e4a96aff9bb76cf716c9065a
 ARG OCAML_VERSION=4.14.2
 ARG COQ_VERSION=8.20.1
+ARG MENHIR_VERSION=20260209
 
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 
@@ -45,7 +47,7 @@ WORKDIR /home/builder
 # --- OCaml + Coq + Menhir (CompCert build prerequisites) ---
 RUN opam init --bare --disable-sandboxing -y \
     && opam switch create default "${OCAML_VERSION}" -y \
-    && opam install -y "coq.${COQ_VERSION}" menhir \
+    && opam install -y "coq.${COQ_VERSION}" "menhir.${MENHIR_VERSION}" \
     && opam clean -a -c -s --logs
 
 # --- CompCert, built from a commit-verified checkout, configured for aarch64-linux ---

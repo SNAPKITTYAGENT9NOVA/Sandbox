@@ -56,7 +56,13 @@ corpus:
   g2_status:
     run_id: 38653926670
     lean: "4.33.1 (819816b2e0a3bf405af45ae5c7af2491d8f5bee6)"
-    build_variant: always_true            # Prop answer(sorry) elaborates to True; postpone variant not yet ledgered
+    build_variant: always_true            # Prop answer(sorry) elaborates to True
+    postpone_variant:                     # weak.google.answer = "postpone" (lakefile.extract.toml), G2 run 39132484286
+      lake_build_exit: 0
+      ledger_constants: 17232
+      lean_verified: 12390
+      blocked: 4842
+      headline: g2-headline-postpone.json   # identical to the always_true headline (same run, both variants)
     lake_build_exit: 0
     ledger_constants: 17232
     lean_verified: 12390                  # build ok and axioms within {propext, Classical.choice, Quot.sound}
@@ -66,4 +72,4 @@ corpus:
       lcProof_dependent: "_private.FormalConjecturesForMathlib.Data.Nat.Full.0.Nat.primeFactorsEq.unsafe_1 (compiler-generated unsafe auxiliary; correctly BLOCKED; no theorem depends on it)"
       modules_without_constants: "14 = 2 aggregator roots (FormalConjecturesForMathlib, FormalConjecturesUtil) + 11 stub files ending at `public section` + Analysis.Real.Cardinality (only `attribute [simp]`)"
     g3_exact_domain_candidates: 339   # G2 run 38684283753 (tightened filter: no Type-valued defs, no match_N auxiliaries); was 371
-    open_items: ["ledger the postpone build variant"]
+    open_items: []

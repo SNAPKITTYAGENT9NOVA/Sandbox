@@ -2579,14 +2579,20 @@ unsafe def refOf (n : Name) (arity : Nat) (kind : Kind) : MetaM (List Nat → Ex
   if kind == .prop then
     let ci ← getConstInfo n
     unless ci.levelParams.isEmpty do throwError "universe-polymorphic predicate"
-    let lam ← forallTelescope ci.type fun xs _ => do
+    let lam? ← forallTelescope ci.type fun xs _ => do
       let p := mkAppN (mkConst n) xs
-      let inst ← synthInstance (mkApp (mkConst ``Decidable) p)
-      mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) p inst)
+      let some inst ← synthInstance? (mkApp (mkConst ``Decidable) p) | return none
+      return some (← mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) p inst))
+    let some lam := lam? | throwError "NOREF no Decidable instance"
     target := `LeanM2.MathIR.ref ++ n
     let lamTy ← inferType lam
     let dv : DefinitionVal := { name := target, levelParams := [], type := lamTy, value := lam, hints := .opaque, safety := .safe }
-    addAndCompile (.defnDecl dv)
+    try addAndCompile (.defnDecl dv)
+    catch e =>
+      let msg ← e.toMessageData.toString
+      -- the only expected compile failure: the synthesized instance is noncomputable (Classical)
+      if (msg.splitOn "noncomputable").length > 1 then throwError "NOREF Decidable instance is noncomputable"
+      throw e
   let env ← getEnv
   let ev (α : Type) : MetaM α := do
     match env.evalConst α {} target (checkMeta := false) with
@@ -2652,6 +2658,7 @@ set_option maxHeartbeats 0 in
   -- 1. candidates
   let mut cands : Array (Name × Nat) := #[]
   let mut kinds : Std.HashMap Name Kind := {}
+  let mut internal : Array (Name × String) := #[]
   for m in wanted do
     let some idx := env.header.moduleNames.findIdx? (· == m) | continue
     for ci in env.header.moduleData[idx]!.constants do
@@ -2668,19 +2675,26 @@ set_option maxHeartbeats 0 in
   let mut blocked : Array (Name × String) := #[]
   for (n, k) in cands do
     progress s!"extract {n}"
-    match ← (try extract n k (kinds.getD n .nat) catch e => do pure (.error s!"exception: {← e.toMessageData.toString}")) with
-    | .ok d => defs := defs.insert n d
-    | .error r => blocked := blocked.push (n, r)
-  progress s!"extraction done: translated={defs.size} blocked={blocked.size}"
+    -- a `bail` (unsupported construct) blocks the function; an exception is a translator bug
+    match ← (try (Sum.inl <$> extract n k (kinds.getD n .nat)) catch e => do pure (.inr (← e.toMessageData.toString))) with
+    | .inl (.ok d) => defs := defs.insert n d
+    | .inl (.error r) => blocked := blocked.push (n, r)
+    | .inr msg => internal := internal.push (n, msg)
+  progress s!"extraction done: translated={defs.size} blocked={blocked.size} internal_errors={internal.size}"
+  unless internal.isEmpty do
+    throwError m!"MATHIR INTERNAL ERRORS ({internal.size}): {internal.toList.take 10}"
   -- 2b. Lean references (compiled once per function; a predicate without one is blocked)
   let mut refs : Std.HashMap Name (List Nat → Except String Nat) := {}
   for (n, d) in defs.toList do
+    -- only the two expected NOREF outcomes block; any other exception fails the run
     match ← (try (Except.ok <$> unsafe refOf n d.arity (kinds.getD n .nat))
-             catch e => do pure (.error s!"no Lean reference: {← e.toMessageData.toString}")) with
+             catch e => do
+               let m ← e.toMessageData.toString
+               if m.startsWith "NOREF " then pure (.error ((m.drop 6).toString)) else throw e) with
     | .ok f => refs := refs.insert n f
     | .error r =>
       defs := defs.erase n
-      blocked := blocked.push (n, r.replace "\n" " ")
+      blocked := blocked.push (n, s!"no Lean reference: {r}")
   -- 3. closure over calls
   let mut changed := true
   while changed do

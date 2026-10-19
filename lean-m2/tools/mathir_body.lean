@@ -2585,8 +2585,8 @@ unsafe def refOf (n : Name) (arity : Nat) (kind : Kind) : MetaM (List Nat → Ex
       mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) p inst)
     target := `LeanM2.MathIR.ref ++ n
     let lamTy ← inferType lam
-    addAndCompile (.defnDecl { name := target, levelParams := [], type := lamTy, value := lam,
-      hints := .opaque, safety := .safe })
+    let dv : DefinitionVal := { name := target, levelParams := [], type := lamTy, value := lam, hints := .opaque, safety := .safe }
+    addAndCompile (.defnDecl dv)
   let env ← getEnv
   let ev (α : Type) : MetaM α := do
     match env.evalConst α {} target (checkMeta := false) with

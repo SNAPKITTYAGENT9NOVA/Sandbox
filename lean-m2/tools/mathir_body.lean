@@ -2574,15 +2574,21 @@ def u64Max : Nat := 2 ^ 64 - 1
 definition is evaluated directly; for a predicate `P`, `fun xs => decide (P xs)` is compiled with
 the Decidable instance Lean synthesizes (any instance decides the same proposition). A predicate
 with no computable instance has no reference, so it is blocked. -/
-unsafe def refOf (n : Name) (arity : Nat) (kind : Kind) : MetaM (List Nat → Except String Nat) := do
+unsafe def refOf (n : Name) (arity : Nat) (kind : Kind) (isPred : Name → Bool := fun _ => false) :
+    MetaM (List Nat → Except String Nat) := do
   let mut target := n
   if kind == .prop then
     let ci ← getConstInfo n
     unless ci.levelParams.isEmpty do throwError "universe-polymorphic predicate"
     let lam? ← forallTelescope ci.type fun xs _ => do
       let p := mkAppN (mkConst n) xs
-      let some inst ← synthInstance? (mkApp (mkConst ``Decidable) p) | return none
-      return some (← mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) p inst))
+      if let some inst ← synthInstance? (mkApp (mkConst ``Decidable) p) then
+        return some (← mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) p inst))
+      -- no instance for `P xs`: unfold the corpus predicates in it (definitionally the same
+      -- proposition) and ask for an instance of the unfolded statement
+      let q ← deltaExpand p isPred
+      let some inst ← synthInstance? (mkApp (mkConst ``Decidable) q) | return none
+      return some (← mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) q inst))
     let some lam := lam? | throwError "NOREF no Decidable instance"
     target := `LeanM2.MathIR.ref ++ n
     let lamTy ← inferType lam
@@ -2687,7 +2693,7 @@ set_option maxHeartbeats 0 in
   let mut refs : Std.HashMap Name (List Nat → Except String Nat) := {}
   for (n, d) in defs.toList do
     -- only the two expected NOREF outcomes block; any other exception fails the run
-    match ← (try (Except.ok <$> unsafe refOf n d.arity (kinds.getD n .nat))
+    match ← (try (Except.ok <$> unsafe refOf n d.arity (kinds.getD n .nat) (fun m => kinds.get? m == some .prop))
              catch e => do
                let m ← e.toMessageData.toString
                if m.startsWith "NOREF " then pure (.error ((m.drop 6).toString)) else throw e) with

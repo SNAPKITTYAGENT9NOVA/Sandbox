@@ -24,3 +24,7 @@ def Unbounded (n : Nat) : Prop := ∀ k, k + n ≥ n
 noncomputable instance : DecidablePred Unbounded := fun n => Classical.propDecidable _
 def NoInst (n : Nat) : Prop := ∃ k, k > n
 end T
+namespace T
+/-- no instance of its own: decided through its unfolding (helpers `Small` unfolded too) -/
+def SmallAndBig (n : Nat) : Prop := Small n ∧ n > 2
+end T

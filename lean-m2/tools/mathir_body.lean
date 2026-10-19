@@ -105,11 +105,15 @@ partial def E.children : E → List E
 partial def E.calls (e : E) : List Name :=
   (match e with | .call f _ => [f] | _ => []) ++ e.children.flatMap E.calls
 
+/-- Does `e` read the loop / accumulator variable `v`? -/
+partial def E.mentions (v : Nat) (e : E) : Bool :=
+  (match e with | .lvar w => w == v | _ => false) || e.children.any (E.mentions v)
+
 /-- Anything whose reference evaluation may be costly: pow, loops, heavy builtins. -/
 partial def E.heavy (e : E) : Bool :=
   (match e with
    | .bin "pow" _ _ | .bin "ipow" _ _ | .bin "qpow" _ _ | .fold .. | .iter .. => true
-   | .prim op _ => op ∈ ["fact", "choose", "minfac", "prime", "lcm", "fib", "bigomega"]
+   | .prim op _ => op ∈ ["fact", "choose", "minfac", "prime", "lcm", "fib", "bigomega", "pfnth"]
    | _ => false) || e.children.any E.heavy
 
 inductive FnDef where
@@ -195,6 +199,22 @@ def fresh (c : Ctx) : TrM Nat := do
 /-- The identity `fun k : ℕ => k`: the element of a plain range is its loop counter. -/
 def idElem : Expr := .lam `k (mkConst ``Nat) (.bvar 0) .default
 
+/-- MathIR v8 list elements. `MathIR.pfnth n k` / `MathIR.digat b n k` are marker constants that
+exist only inside these element lambdas (never in the corpus environment); `tr` maps them to the
+builtins `pfnth` ((primeFactorsList n)[k]) and `digat` ((digits b n)[k]), 0 past the end. -/
+def pfElem (n : Expr) : Expr := .lam `k (mkConst ``Nat) (mkApp2 (mkConst `MathIR.pfnth) n (.bvar 0)) .default
+def digElem (b n : Expr) : Expr :=
+  .lam `k (mkConst ``Nat) (mkApp3 (mkConst `MathIR.digat) b n (.bvar 0)) .default
+
+/-- The first element of an enumeration (in counter order), or `dflt` if it is empty. The
+accumulator holds 0 while nothing has been seen, else element + 1. -/
+def firstOf (id acc : Nat) (lo hi : E) (incl : Bool) (filt e dflt : E) : E :=
+  let first := E.iter id acc lo hi incl filt (.lit 0)
+    (.ite (.cmp "eq" (.lvar acc) (.lit 0)) (.bin "add" e (.lit 1)) (.lvar acc))
+  .ite (.cmp "eq" first (.lit 0)) dflt (.bin "sub" first (.lit 1))
+
+def andF (f0 f1 : E) : E := match f0 with | .lit 1 => f1 | _ => .and f0 f1
+
 mutual
 
 /-- Translate a ℕ-valued expression. -/
@@ -212,6 +232,10 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if let some (op, a, b) := binOp? e then return .bin op (← tr c a) (← tr c b)
   if e.isAppOfArity ``Nat.succ 1 then return .bin "add" (← tr c e.appArg!) (.lit 1)
   let (fn, args) := e.getAppFnArgs
+  -- MathIR v8 list-element markers (see `pfElem`, `digElem`)
+  if fn == `MathIR.pfnth && args.size == 2 then return .prim "pfnth" [← tr c args[0]!, ← tr c args[1]!]
+  if fn == `MathIR.digat && args.size == 3 then
+    return .prim "digat" [← tr c args[0]!, ← tr c args[1]!, ← tr c args[2]!]
   -- min / max on ℕ
   if (fn == ``Min.min || fn == ``Max.max) && args.size == 4 && isNatTy args[0]! then
     return .prim (if fn == ``Min.min then "min" else "max") [← tr c args[2]!, ← tr c args[3]!]
@@ -294,6 +318,76 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     let id ← fresh c
     let (lo, hi, incl, filt, _) ← lsource c id args[1]!
     return .fold "count" id lo hi incl filt (.lit 1)
+  -- MathIR v8 list consumers
+  if fn == `List.prod && args.size ≥ 2 && isNatTy args[0]! then
+    let id ← fresh c
+    let (lo, hi, incl, filt, elem) ← lsource c id args.back!
+    let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := c.loops.push (x, id) } (elem.beta #[x])
+    return .fold "prod" id lo hi incl filt body
+  -- l.count a = #{i | l[i] == a}; BEq must be the decidable-equality / Nat instance
+  if fn == ``List.count && args.size == 4 && isNatTy args[0]! then
+    let inst := args[1]!.consumeMData.getAppFn
+    unless inst.isConstOf ``instBEqOfDecidableEq || inst.isConstOf `instBEqNat do
+      bail "List.count with a non-standard BEq instance"
+    let a ← tr c args[2]!
+    let id ← fresh c
+    let (lo, hi, incl, filt, elem) ← lsource c id args[3]!
+    let e ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := c.loops.push (x, id) } (elem.beta #[x])
+    return .fold "count" id lo hi incl (andF filt (.cmp "eq" e a)) (.lit 1)
+  if fn == ``List.countP && args.size == 3 && isNatTy args[0]! then
+    let id ← fresh c
+    let (lo, hi, incl, filt, elem) ← lsource c id args[2]!
+    let p ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      trBool { c with loops := c.loops.push (x, id) } (args[1]!.beta #[elem.beta #[x]])
+    return .fold "count" id lo hi incl (andF filt p) (.lit 1)
+  -- l.foldr f init with f an associative-commutative ℕ operation (+, *, min, max, gcd, lcm):
+  -- then foldr f init l = foldl (flip f) init l, an accumulator loop in list order
+  if fn == ``List.foldr && args.size == 5 && isNatTy args[0]! && isNatTy args[1]! then
+    let id ← fresh c
+    let acc := accBase + (← fresh c)
+    let (lo, hi, incl, filt, elem) ← lsource c id args[4]!
+    let init ← tr c args[3]!
+    let body ← withLocalDeclD `a (mkConst ``Nat) fun a => withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := (c.loops.push (x, id)).push (a, acc) } (args[2]!.beta #[elem.beta #[x], a])
+    let isAcc (x : E) : Bool := match x with | .lvar v => v == acc | _ => false
+    let oneSide (x y : E) : Bool := (isAcc x && !y.mentions acc) || (isAcc y && !x.mentions acc)
+    let ok := match body with
+      | .bin op x y => op ∈ ["add", "mul"] && oneSide x y
+      | .prim op [x, y] => op ∈ ["min", "max", "gcd", "lcm"] && oneSide x y
+      | _ => false
+    unless ok do bail "List.foldr with an operation not known to be associative-commutative"
+    return .iter id acc lo hi incl filt init body
+  -- l.getLastI: the last element, or default = 0 for ℕ
+  if fn == `List.getLastI && args.size == 3 && isNatTy args[0]! then
+    let dflt := mkApp2 (mkConst ``Inhabited.default [levelOne]) (mkConst ``Nat) args[1]!
+    unless (← isDefEq dflt (mkNatLit 0)) do bail "List.getLastI with a default other than 0"
+    let id ← fresh c
+    let acc := accBase + (← fresh c)
+    let (lo, hi, incl, filt, elem) ← lsource c id args[2]!
+    let e ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := c.loops.push (x, id) } (elem.beta #[x])
+    return .iter id acc lo hi incl filt (.lit 0) e
+  -- s.min' h over an identity-element ℕ source: sources enumerate such sets in increasing order,
+  -- so the minimum is the first element (h guarantees one exists)
+  if fn == `Finset.min' && args.size == 4 && isNatTy args[0]! then
+    let id ← fresh c
+    let acc := accBase + (← fresh c)
+    let (lo, hi, incl, filt, elem) ← source c id args[2]!
+    unless elem == idElem do bail "Finset.min' over a mapped source"
+    return firstOf id acc lo hi incl filt (.lvar id) (.lit 0)
+  -- Nat.find (Nat.exists_infinite_primes k): the least prime ≥ k. Bertrand's postulate puts it in
+  -- [k, 2k + 2] (k ≥ 2: a prime in (k - 1, 2(k - 1)]; k ≤ 1: 2), so a bounded search is exact.
+  if fn == `Nat.find && args.size == 3 then
+    let H := args[2]!.consumeMData
+    unless H.isAppOfArity `Nat.exists_infinite_primes 1 do bail "unsupported: Nat.find (no known bound)"
+    let k ← tr c H.appArg!
+    let id ← fresh c
+    let acc := accBase + (← fresh c)
+    let p ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      trProp { c with loops := c.loops.push (x, id) } (args[0]!.beta #[x])
+    return firstOf id acc (.lit 0) (.bin "add" (.bin "mul" (.lit 2) k) (.lit 2)) true p (.lvar id) (.lit 0)
   -- l.foldl f init over a range-based list: an accumulator loop
   if fn == ``List.foldl && args.size == 5 && isNatTy args[0]! && isNatTy args[1]! then
     let id ← fresh c
@@ -595,6 +689,17 @@ partial def source (c : Ctx) (id : Nat) (s : Expr) : TrM (E × E × Bool × E ×
     let first := E.cmp "eq" earlier (.lit 0)
     let filt := match f0 with | .lit 1 => first | _ => .and f0 first
     return (lo, hi, incl, filt, elem)
+  -- MathIR v8: a non-recursive helper ℕ^k → Finset ℕ defined by its body: inline it (bounded depth)
+  if fn != .anonymous && c.depth < 4 then
+    let ci ← getConstInfo fn
+    if let some v := ci.value? then
+      let ok ← forallTelescope ci.type fun xs body => do
+        unless body.isAppOfArity `Finset 1 && isNatTy body.appArg! && xs.size == args.size && !xs.isEmpty do
+          return false
+        for x in xs do
+          unless isNatTy (← inferType x) do return false
+        return true
+      if ok then return ← source { c with depth := c.depth + 1 } id (v.beta args)
   bail s!"unsupported Finset source: {fn}"
 
 /-- A list of ℕ built from a range: `(lo, hi, inclusive, filter, elem)` like `source`, but in list
@@ -616,6 +721,22 @@ partial def lsource (c : Ctx) (id : Nat) (l : Expr) : TrM (E × E × Bool × E �
   if fn == ``List.map && args.size == 4 && isNatTy args[0]! && isNatTy args[1]! then
     let (lo, hi, incl, filt, e0) ← lsource c id args[3]!
     return (lo, hi, incl, filt, .lam `k (mkConst ``Nat) (.app args[2]! (.app e0 (.bvar 0))) .default)
+  -- MathIR v8: prime factors with multiplicity (ascending) and base-b digits (least significant first)
+  if fn == `Nat.primeFactorsList && args.size == 1 then
+    return (.lit 0, .prim "bigomega" [← tr c args[0]!], false, .lit 1, pfElem args[0]!)
+  if fn == `Nat.digits && args.size == 2 then
+    return (.lit 0, .prim "diglen" [← tr c args[0]!, ← tr c args[1]!], false, .lit 1, digElem args[0]! args[1]!)
+  -- MathIR v8: a non-recursive helper ℕ^k → List ℕ defined by its body: inline it (bounded depth)
+  if fn != .anonymous && c.depth < 4 then
+    let ci ← getConstInfo fn
+    if let some v := ci.value? then
+      let ok ← forallTelescope ci.type fun xs body => do
+        unless body.isAppOfArity ``List 1 && isNatTy body.appArg! && xs.size == args.size && !xs.isEmpty do
+          return false
+        for x in xs do
+          unless isNatTy (← inferType x) do return false
+        return true
+      if ok then return ← lsource { c with depth := c.depth + 1 } id (v.beta args)
   bail s!"unsupported list: {fn}"
 
 end
@@ -1360,7 +1481,8 @@ def m2Prim : String → String
   | "min" => "Min" | "max" => "Max" | "gcd" => "Gcd" | "lcm" => "Lcm" | "fact" => "Fact"
   | "choose" => "Choose" | "sqrt" => "Sqrt" | "minfac" => "MinFac" | "prime" => "IsPrime"
   | "fib" => "Fib" | "log" => "Log" | "log2" => "Log2" | "padic" => "PadicVal" | "bigomega" => "BigOmega"
-  | "digsum" => "DigSum" | "diglen" => "DigLen" | "digrev" => "DigRev" | "xor" => "Xor" | _ => "Dvd"
+  | "digsum" => "DigSum" | "diglen" => "DigLen" | "digrev" => "DigRev" | "xor" => "Xor"
+  | "pfnth" => "PfNth" | "digat" => "DigAt" | _ => "Dvd"
 
 mutual
 partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
@@ -1607,7 +1729,7 @@ def m2Wide : String → String
   | "choose" => "Choose" | "sqrt" => "Sqrt" | "minfac" => "MinFac" | "prime" => "Prime"
   | "bigomega" => "BigOmega" | "dvd" => "Dvd" | "fib" => "Fib" | "log" => "Log" | "log2" => "Log2"
   | "padic" => "Padic" | "digsum" => "DigSum" | "diglen" => "DigLen" | "digrev" => "DigRev"
-  | "xor" => "Xor"
+  | "xor" => "Xor" | "pfnth" => "PfNth" | "digat" => "DigAt"
   | op => s!"ILLTYPED_{op}"
 
 mutual
@@ -2081,6 +2203,17 @@ def minFacN (n : Nat) : Nat := Id.run do
     d := d + 2
   return n
 
+/-- Mathlib's `Nat.primeFactorsList` (n.minFac :: primeFactorsList (n / n.minFac) for n ≥ 2), by
+repeated `minFacN` — a different algorithm from the runtimes' trial division. -/
+def pfListN (n : Nat) : List Nat := Id.run do
+  let mut out : Array Nat := #[]
+  let mut m := n
+  while m ≥ 2 do
+    let p := minFacN m
+    out := out.push p
+    m := m / p
+  return out.toList
+
 
 mutual
 partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat) (i : Nat)
@@ -2138,6 +2271,8 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     | "digsum" => if a == 1 && c > 2 ^ 16 then throw "digits budget" else pure (digitsN a c).sum
     | "diglen" => if a == 1 && c > 2 ^ 16 then throw "digits budget" else pure (digitsN a c).length
     | "digrev" => if a == 1 && c > 2 ^ 16 then throw "digits budget" else chk b (ofDigitsN a (digitsN a c).reverse)
+    | "pfnth" => if a > 2 ^ 20 then throw "factor budget" else pure ((pfListN a).getD c 0)
+    | "digat" => if a == 1 && c > 2 ^ 16 then throw "digits budget" else pure ((digitsN a c).getD (vs.getD 2 0) 0)
     | _ => pure (b2n (if a == 0 then c == 0 else c % a == 0))   -- dvd
   | .cmp k x y => do
     if k.startsWith "i" then

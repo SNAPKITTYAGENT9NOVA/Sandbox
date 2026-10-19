@@ -142,6 +142,22 @@ static uint64_t lm2_bigomega(uint64_t n) {
   if (n > 1u) k++;
   return k;
 }
+/* MathIR v8: (Nat.primeFactorsList n)[k] (ascending, with multiplicity); 0 if k >= Omega(n) */
+static uint64_t lm2_pfnth(uint64_t n, uint64_t k) {
+  uint64_t d;
+  if (n <= 1u) return 0u;
+  for (d = 2u; d <= n / d; d++) {
+    while (n % d == 0u) { if (k == 0u) return d; n /= d; k--; }
+  }
+  return (n > 1u && k == 0u) ? n : 0u;
+}
+/* MathIR v8: (Nat.digits b n)[k]; 0 if k >= (Nat.digits b n).length */
+static uint64_t lm2_digat(uint64_t b, uint64_t n, uint64_t k) {
+  if (b == 0u) return k == 0u ? n : 0u;
+  if (b == 1u) return k < n ? 1u : 0u;
+  while (k > 0u && n > 0u) { n /= b; k--; }
+  return n % b;
+}
 /* Nat.digits b n: base 0 gives [n] (n > 0), base 1 gives n ones, base >= 2 little-endian digits */
 static uint64_t lm2_digsum(uint64_t b, uint64_t n) {
   uint64_t s = 0u;

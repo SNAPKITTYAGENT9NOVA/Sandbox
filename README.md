@@ -15,12 +15,12 @@ provenance is kept. The target is AArch64 Linux.
 | G0 | Toolchain probe: CompCert 3.18, gm2, Lean, linked ABI probe | **PASS** (toolchain-only), native AArch64 | CI `lean-m2 workstation (G0)` |
 | G1 | Corpus inventory: hashes, Lean headers, import graph, Lake targets | **PASS**, Lean-native tool | `lean-m2/corpus.lock.yaml`, `EVIDENCE.sha256` |
 | G2 | `lake build` + Lean-native declaration and axiom ledger | **PASS**: 17,232 constants; 12,390 `LEAN_VERIFIED`, 4,842 `BLOCKED` | `lean-m2/corpus/formal-conjectures/84cf7f8/g2-headline.json` |
-| G3–G6 | Extraction → CompCert → Modula-2 → differential test | **MathIR v7 generator PASS**: 171 of 246 `ℕᵏ→ℕ` definitions generated as CompCert C + native Modula-2 (loops, sums/products/counts/maxima/lcm over ranges, divisors, primes and images, predicates and Bool, number-theory and digit builtins, checked ℤ subterms, exact ℚ subterms, range-based lists, `let`, lookback recursion); 0 unsound and 0 incomplete in 16,723 cases (exact wide fallback when 64 bits overflow); SLICE-001 acceptance passes on generated code. **Release gate PASS** (39 fail-closed checks; packaged by `lean-m2-release.yml`) | `lean-m2/g3/gen/LEDGER.json` |
+| G3–G6 | Extraction → CompCert → Modula-2 → differential test | **MathIR v8 generator PASS**: 181 of 246 `ℕᵏ→ℕ` definitions generated as CompCert C + native Modula-2 (loops, sums/products/counts/maxima/lcm over ranges, divisors, primes and images, predicates and Bool, number-theory and digit builtins, checked ℤ subterms, exact ℚ subterms, prime-factor and digit lists, range-based lists, `let`, lookback recursion); 0 unsound and 0 incomplete in 17,705 cases (exact wide fallback when 64 bits overflow); SLICE-001 acceptance passes on generated code. **Release gate PASS** (39 fail-closed checks; packaged by `lean-m2-release.yml`) | `lean-m2/g3/gen/LEDGER.json` |
 
 **Corpus:** [google-deepmind/formal-conjectures](https://github.com/google-deepmind/formal-conjectures)
 @ `84cf7f8` (1,777 `.lean` files, Lean 4.33.1, Mathlib v4.33.1).
 
-**The Modula-2 library has 171 generated functions so far** (MathIR v7), plus the hand-written SLICE-001. The rest is the pipeline.
+**The Modula-2 library has 181 generated functions so far** (MathIR v8), plus the hand-written SLICE-001. The rest is the pipeline.
 `LEAN_VERIFIED` means Lean's kernel accepted the declaration using only `propext`,
 `Classical.choice` and `Quot.sound`. It says nothing about any translation.
 

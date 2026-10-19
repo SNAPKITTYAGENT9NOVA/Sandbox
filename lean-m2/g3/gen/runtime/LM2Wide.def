@@ -39,6 +39,8 @@ PROCEDURE Sqrt (VAR n, r: Wide) : BOOLEAN;
 PROCEDURE MinFac (VAR n, r: Wide) : BOOLEAN;              (* argument must fit 64 bits *)
 PROCEDURE Prime (VAR n, r: Wide) : BOOLEAN;               (* argument must fit 64 bits; 1 / 0 *)
 PROCEDURE BigOmega (VAR n, r: Wide) : BOOLEAN;            (* argument must fit 64 bits *)
+PROCEDURE PfNth (VAR n, k, r: Wide) : BOOLEAN;             (* n must fit 64 bits; v8 *)
+PROCEDURE DigAt (VAR b, n, k, r: Wide) : BOOLEAN;          (* v8 *)
 PROCEDURE Dvd (VAR a, b, r: Wide) : BOOLEAN;              (* 1 / 0 *)
 PROCEDURE Fib (VAR n, r: Wide) : BOOLEAN;
 PROCEDURE Log (VAR b, n, r: Wide) : BOOLEAN;

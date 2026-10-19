@@ -380,6 +380,34 @@ BEGIN
   Set(r, LM2Nat.BigOmega(x)); RETURN FALSE
 END BigOmega;
 
+PROCEDURE PfNth (VAR n, k, r: Wide) : BOOLEAN;
+VAR
+  x, j: LONGCARD;
+BEGIN
+  IF Get(n, x) THEN RETURN TRUE END;
+  IF Get(k, j) THEN Set(r, 0); RETURN FALSE END;   (* k >= 2^64 > Omega(n) *)
+  Set(r, LM2Nat.PfNth(x, j)); RETURN FALSE
+END PfNth;
+
+PROCEDURE DigAt (VAR b, n, k, r: Wide) : BOOLEAN;
+VAR
+  bb, m, q, d, one: Wide; j: LONGCARD;
+BEGIN
+  Set(one, 1);
+  IF b.n = 0 THEN
+    IF k.n = 0 THEN r := n ELSE Set(r, 0) END;
+    RETURN FALSE
+  END;
+  IF Cmp(b, one) = 0 THEN
+    IF Cmp(k, n) < 0 THEN Set(r, 1) ELSE Set(r, 0) END;
+    RETURN FALSE
+  END;
+  IF Get(k, j) THEN Set(r, 0); RETURN FALSE END;   (* k >= 2^64 > bit length of n *)
+  bb := b; m := n;
+  WHILE (j > 0) AND (m.n # 0) DO DivMod(m, bb, q, d); m := q; DEC(j) END;
+  DivMod(m, bb, q, d); r := d; RETURN FALSE
+END DigAt;
+
 PROCEDURE Dvd (VAR a, b, r: Wide) : BOOLEAN;
 VAR
   m: Wide;

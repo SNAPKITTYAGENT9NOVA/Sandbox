@@ -38,3 +38,9 @@ namespace T
 noncomputable but compiles (implemented by the compiler): must translate, not be blocked -/
 def AllSmallOdd2 (n : Nat) : Prop := ∀ k < n, k % 2 = 1 → k ≠ 4
 end T
+namespace T
+/-- ℤ results (MathIR v10): negatives, the int64 edge −2^63 (n = 2^63), and overflow -/
+def zdiff (a b : Nat) : Int := (a : Int) - b
+def zneg (n : Nat) : Int := -(n : Int)
+def zpoly (n : Nat) : Int := 3 - (n : Int) * n
+end T

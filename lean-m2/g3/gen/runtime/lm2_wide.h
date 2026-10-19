@@ -340,6 +340,14 @@ static int lm2wi_pow(const lm2wi *a, const lm2w *e, lm2wi *r) {
 }
 static int lm2wi_tonat(const lm2wi *a, lm2w *r) { if (a->neg) r->n = 0u; else *r = a->m; return 0; }
 static int lm2wi_natabs(const lm2wi *a, lm2w *r) { *r = a->m; return 0; }
+/* MathIR v10: an exact ℤ result as int64 two's-complement bits; 1 if outside [-2^63, 2^63) */
+static int lm2wi_bits(const lm2wi *a, uint64_t *r) {
+  uint64_t x;
+  if (lm2w_get(&a->m, &x)) return 1;
+  if (!a->neg) { if (x > (uint64_t)INT64_MAX) return 1; *r = x; return 0; }
+  if (x > (uint64_t)INT64_MAX + 1u) return 1;
+  *r = (uint64_t)0 - x; return 0;
+}
 static int lm2wi_cmp(const lm2wi *a, const lm2wi *b) {
   if (a->neg != b->neg) return a->neg ? -1 : 1;
   return a->neg ? -lm2w_cmp(&a->m, &b->m) : lm2w_cmp(&a->m, &b->m);

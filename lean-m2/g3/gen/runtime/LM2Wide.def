@@ -60,6 +60,7 @@ PROCEDURE IMul (VAR a, b, r: WInt) : BOOLEAN;
 PROCEDURE IPow (VAR a: WInt; VAR e: Wide; VAR r: WInt) : BOOLEAN;
 PROCEDURE IToNat (VAR a: WInt; VAR r: Wide) : BOOLEAN;
 PROCEDURE INatAbs (VAR a: WInt; VAR r: Wide) : BOOLEAN;
+PROCEDURE IBits (VAR a: WInt; VAR r: LONGCARD) : BOOLEAN;   (* v10: int64 bits; TRUE if outside int64 *)
 PROCEDURE ICmp (VAR a, b: WInt) : INTEGER;
 
 (* ℚ (MathIR v6): Lean semantics x / 0 = 0, 0⁻¹ = 0; ℚ subterms run only on this exact path *)

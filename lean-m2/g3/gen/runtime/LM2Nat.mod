@@ -282,6 +282,13 @@ BEGIN
   r := acc; RETURN FALSE
 END DigRev;
 
+PROCEDURE IntBits (a: LONGINT) : LONGCARD;
+BEGIN
+  IF a >= 0 THEN RETURN VAL(LONGCARD, a) END;
+  (* a < 0: 2^64 + a = MAX(LONGCARD) - (-(a + 1)); -(a + 1) cannot overflow *)
+  RETURN MAX(LONGCARD) - VAL(LONGCARD, -(a + 1))
+END IntBits;
+
 PROCEDURE NatAbs (a: LONGINT) : LONGCARD;
 BEGIN
   IF a < 0 THEN RETURN VAL(LONGCARD, -(a + 1)) + 1 ELSE RETURN VAL(LONGCARD, a) END

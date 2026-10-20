@@ -1,4 +1,4 @@
-MATHIR candidates=15 translated=12 blocked=3 cases=2971 ok=2416 overflow=555 skipped_over_budget=0 ir_fidelity_mismatches=0
+MATHIR candidates=17 translated=14 blocked=3 cases=3066 ok=2472 overflow=594 skipped_over_budget=49 ir_fidelity_mismatches=0
 translated:
   T.AllSmallOdd (1-ary, prop)
   T.AllSmallOdd2 (1-ary, prop)
@@ -9,7 +9,9 @@ translated:
   T.SmallAndEven (1-ary, prop)
   T.anyDiv (1-ary, bool)
   T.sq (1-ary)
+  T.zalt (1-ary, int, rec K=1)
   T.zdiff (2-ary, int)
+  T.zfib (1-ary, int, rec K=2)
   T.zneg (1-ary, int)
   T.zpoly (1-ary, int)
 blocked reasons:

@@ -66,7 +66,7 @@ machine-readable evidence and blocks on anything unmeasured.
 
 | Component | Pin |
 |---|---|
-| Base | `ubuntu:24.04` (digest: REQUIRED in `workstation.lock.yaml`) |
+| Base | `ubuntu:24.04@sha256:68ee2200…33ac` (pinned in the Dockerfile; recorded in `workstation.lock.yaml`) |
 | CompCert | commit `8135de0`: tag `v3.18` plus upstream's VERSION-only fix (the tagged commit reports 3.17). The build verifies that the diff is exactly `VERSION` |
 | Coq / OCaml | Coq 8.20.1, OCaml 4.14.2 (opam) |
 | GNU Modula-2 | Ubuntu noble `gm2`; exact version recorded by G0 |

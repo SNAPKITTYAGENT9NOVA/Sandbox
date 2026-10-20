@@ -611,6 +611,20 @@ BEGIN
   t.neg := a.neg AND (e.n # 0) AND ODD(e.d[0]); Fix(t); r := t; RETURN FALSE
 END IPow;
 
+PROCEDURE IBits (VAR a: WInt; VAR r: LONGCARD) : BOOLEAN;
+VAR
+  x, lim: LONGCARD;
+BEGIN
+  IF Get(a.m, x) THEN RETURN TRUE END;
+  lim := VAL(LONGCARD, MAX(LONGINT));
+  IF NOT a.neg THEN
+    IF x > lim THEN RETURN TRUE END;
+    r := x; RETURN FALSE
+  END;
+  IF x > lim + 1 THEN RETURN TRUE END;
+  r := (MAX(LONGCARD) - x) + 1; RETURN FALSE      (* x >= 1: 2^64 - x *)
+END IBits;
+
 PROCEDURE IToNat (VAR a: WInt; VAR r: Wide) : BOOLEAN;
 BEGIN
   IF a.neg THEN r.n := 0 ELSE r := a.m END; RETURN FALSE

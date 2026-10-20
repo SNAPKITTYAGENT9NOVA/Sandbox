@@ -1,12 +1,12 @@
 {
   "contract": "LEAN-M2-CC-001",
-  "component": "MathIR v9 generator (v8 + decidable predicates ℕᵏ → Prop / Bool as 0/1 functions; bounded ∀/∃, ↔, →, membership, Squarefree, IsSquare; predicate references via Lean's compiled decide)",
-  "ci_run": 39296400783,
+  "component": "MathIR v10 generator (v9 + non-recursive ℤ-valued functions ℕᵏ → ℤ: int64-bit results, exact wide fallback)",
+  "ci_run": 39330508901,
   "supersedes": {
-    "component": "MathIR v8",
-    "ci_run": 39133873662,
-    "translated": 181,
-    "reference_cases": 17705
+    "component": "MathIR v9",
+    "ci_run": 39296400783,
+    "translated": 218,
+    "reference_cases": 22171
   },
   "corpus_commit": "84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88",
   "lean": "4.33.1 (819816b2e0a3bf405af45ae5c7af2491d8f5bee6)",
@@ -17,58 +17,64 @@
     "gm2": "13.3.0 (-fiso)"
   },
   "coverage": {
-    "candidates": 411,
+    "candidates": 446,
     "candidate_definition": "computable, safe, non-auxiliary def f : ℕ^k → ℕ (k ≤ 3) in corpus modules, no implemented_by/extern",
-    "translated": 218,
-    "blocked": 193,
+    "translated": 227,
+    "blocked": 219,
     "blocked_reasons": {
-      "unsupported constant": 29,
+      "unsupported constant": 32,
       "∃ over a non-ℕ type": 28,
       "unbounded ∃": 24,
       "∀ over a non-ℕ type": 21,
       "unbounded quantifier": 21,
       "unsupported predicate": 16,
+      "unsupported (ℤ): Nat.brecOn": 12,
       "unsupported Finset source": 7,
       "Finset.card over a non-ℕ type": 6,
       "calls untranslated function": 5,
       "Finset.sup over a non-ℕ type": 5,
       "unsupported (ℚ): WellFounded.Nat.fix": 4,
+      "unsupported (ℤ): Matrix.det": 3,
       "unbounded ∀": 3,
       "equality at a non-ℕ type": 2,
+      "body arity differs from type arity": 2,
+      "unsupported (ℤ): LinearRecurrence.mkSol": 2,
       "dependent if-then-else": 2,
       "recursion in a non-recursive equation": 2,
       "Finset.sum over a non-ℕ type": 2,
       "Finset.image over a non-ℕ type": 2,
+      "unsupported (ℤ): HDiv.hDiv": 2,
+      "unsupported (ℤ): Zsqrtd.re": 2,
       "no Lean reference: Lean's compiler generates no code for decide (P xs) (noncomputable constants in it: [Green72.AllowedSetSize])": 1,
-      "unsupported (ℤ): LinearRecurrence.mkSol": 1,
-      "unsupported list: List.flatMap": 1,
-      "equations recurse on different arguments": 1,
-      "unsupported (ℤ): DFunLike.coe": 1,
       "recursive call on a non-offset argument": 1,
-      "unsupported (ℤ): Matrix.det": 1,
-      "unsupported (ℤ): Zsqrtd.re": 1,
+      "equations recurse on different arguments": 1,
+      "unsupported (ℤ): Prod.fst": 1,
+      "unsupported (ℤ): OeisA112521.T._unary": 1,
+      "unsupported list: List.flatMap": 1,
+      "unsupported (ℚ): Matrix.det": 1,
       "≠ at a non-ℕ type": 1,
       "unsupported (ℤ): jacobiSym": 1,
-      "body arity differs from type arity": 1,
+      "unsupported (ℤ): DFunLike.coe": 1,
       "∣ at a non-ℕ type": 1,
       "∀ whose body uses the bound proof": 1,
-      "unsupported (Bool): Rule30.state": 1
+      "unsupported (Bool): Rule30.state": 1,
+      "unsupported (ℤ): Zsqrtd.im": 1
     },
     "top_unsupported_constants": {
       "Fintype.card": 4,
+      "Nat.floor": 3,
       "List.countP": 3,
       "IsPrimePow": 2,
-      "Finset.Nonempty": 2,
       "Finsupp.prod": 2,
       "Set.InjOn": 2,
       "List.count": 2,
+      "subsetSums": 2,
       "Nat.strongRec": 2,
       "DFunLike.coe": 2,
-      "subsetSums": 2,
       "IsWieferichPrimeBase": 2,
+      "Finset.Nonempty": 2,
       "Finsupp.support": 2,
       "Set.Icc": 1,
-      "OeisA267581.caState": 1,
       "DiophantineTuple.IsIntegralDiophantineTuple": 1,
       "numTransversals": 1,
       "Option.getD": 1,
@@ -78,43 +84,15 @@
     }
   },
   "newly_translated": [
-    "AgohGiuga.IsStrongGiuga",
-    "AgohGiuga.IsWeakGiuga",
-    "AlmostPerfectNumbers.AlmostPerfect",
-    "Arxiv.«1601.03081».IsCrystalWithComponents",
-    "CunninghamChain.IsFirstKindChainOfLength",
-    "CunninghamChain.IsSecondKindChainOfLength",
-    "DubnerConjecture.IsTwinPrime",
-    "Emirp.IsEmirp",
-    "Erdos1052.IsUnitaryPerfect",
-    "Erdos382.LargestPrimeRepeated",
-    "Erdos889.v",
-    "Erdos937.IsCoprimePowerfulAP4",
-    "Erdos942.erdos_942.h",
-    "Lemoine.OddPrime",
-    "Mersenne.Nat.GivesWagstaffPrime",
-    "Nat.Composite",
-    "Nat.Full",
-    "OeisA103662.IsValidZerolessPower",
-    "OeisA108.IndexCond",
-    "OeisA108569.A",
-    "OeisA108864.A",
-    "OeisA1599.A",
-    "OeisA166944.IsGreaterTwinPrime",
-    "OeisA237271.A239657",
-    "OeisA271591.IsMaximalRun",
-    "OeisA309132.IsComposite",
-    "OeisA3625.A",
-    "OeisA55487.isFactorialPrime",
-    "OeisA56777.A",
-    "OeisA63880.A",
-    "OeisA67720.A",
-    "OeisA77408.IsBasePalindrome",
-    "OeisA7918.isApOfNPrimes",
-    "QuasiperfectNumbers.Quasiperfect",
-    "SolitaryNumber.Friendly",
-    "WilsonPrime.IsWilsonPrime",
-    "WolstenholmePrime.IsWolstenholmePrime"
+    "OeisA130911.signWeight",
+    "OeisA179524.a",
+    "OeisA179537.a",
+    "OeisA180017.a",
+    "OeisA243106.a",
+    "OeisA258667.inner_sum",
+    "OeisA323557.a",
+    "OeisA64169.a",
+    "OeisA71532.a"
   ],
   "translated_functions": [
     {
@@ -596,6 +574,11 @@
       "result": "nat"
     },
     {
+      "name": "OeisA130911.signWeight",
+      "arity": 1,
+      "result": "int"
+    },
+    {
       "name": "OeisA135508.x",
       "arity": 1,
       "result": "nat",
@@ -664,6 +647,21 @@
       "result": "nat"
     },
     {
+      "name": "OeisA179524.a",
+      "arity": 1,
+      "result": "int"
+    },
+    {
+      "name": "OeisA179537.a",
+      "arity": 1,
+      "result": "int"
+    },
+    {
+      "name": "OeisA180017.a",
+      "arity": 1,
+      "result": "int"
+    },
+    {
       "name": "OeisA181546.F",
       "arity": 2,
       "result": "nat"
@@ -721,6 +719,11 @@
       "result": "nat"
     },
     {
+      "name": "OeisA243106.a",
+      "arity": 1,
+      "result": "int"
+    },
+    {
       "name": "OeisA2454.a",
       "arity": 1,
       "result": "nat"
@@ -734,6 +737,11 @@
       "name": "OeisA258667.a",
       "arity": 1,
       "result": "nat"
+    },
+    {
+      "name": "OeisA258667.inner_sum",
+      "arity": 2,
+      "result": "int"
     },
     {
       "name": "OeisA260194.a",
@@ -792,6 +800,11 @@
       "name": "OeisA3161.b",
       "arity": 1,
       "result": "nat"
+    },
+    {
+      "name": "OeisA323557.a",
+      "arity": 1,
+      "result": "int"
     },
     {
       "name": "OeisA325046.a",
@@ -907,6 +920,11 @@
       "result": "nat"
     },
     {
+      "name": "OeisA64169.a",
+      "arity": 1,
+      "result": "int"
+    },
+    {
       "name": "OeisA67599.concatenateNats",
       "arity": 2,
       "result": "nat"
@@ -941,6 +959,11 @@
       "name": "OeisA70823.numDigitsBase10",
       "arity": 1,
       "result": "nat"
+    },
+    {
+      "name": "OeisA71532.a",
+      "arity": 1,
+      "result": "int"
     },
     {
       "name": "OeisA7406.a",
@@ -1246,6 +1269,10 @@
     }
   ],
   "blocked_functions": {
+    "Arxiv.«2501.03234».S": "unsupported: Nat.floor",
+    "Arxiv.«2501.03234».S'": "unsupported: Nat.floor",
+    "Arxiv.«2607.05739».A": "unsupported (ℤ): Zsqrtd.re",
+    "Arxiv.«2607.05739».B": "unsupported (ℤ): Zsqrtd.im",
     "Arxiv.«2607.05739».IsIntegerValue": "∣ at a non-ℕ type",
     "Arxiv.«2607.05739».kernel": "unsupported: DFunLike.coe",
     "Arxiv.«2607.05739».omega": "unsupported (ℤ): Zsqrtd.re",
@@ -1357,21 +1384,37 @@
     "Nat.iteratedLog": "recursive call on a non-offset argument",
     "Nat.squarePart": "calls untranslated function Nat.squarefreePart",
     "Nat.squarefreePart": "unsupported: Finsupp.prod",
+    "OeisA100434.a": "unsupported (ℤ): Nat.brecOn",
+    "OeisA100434.b": "unsupported (ℤ): Nat.brecOn",
+    "OeisA100434.c": "unsupported (ℤ): Nat.brecOn",
+    "OeisA100434.d": "unsupported (ℤ): Nat.brecOn",
+    "OeisA100434.e": "unsupported (ℤ): HDiv.hDiv",
+    "OeisA100434.f": "unsupported (ℤ): HDiv.hDiv",
+    "OeisA100434.g": "unsupported (ℤ): Nat.brecOn",
     "OeisA101779.Ak": "unbounded quantifier",
+    "OeisA103311.a": "unsupported (ℤ): Nat.brecOn",
     "OeisA109074.b": "unsupported: OeisA109074.countVsasmRows",
     "OeisA109671.a": "recursion in a non-recursive equation",
+    "OeisA112521.T": "unsupported (ℤ): OeisA112521.T._unary",
     "OeisA112970.a": "recursion in a non-recursive equation",
+    "OeisA113250.a": "unsupported (ℤ): Nat.brecOn",
+    "OeisA113252.a": "unsupported (ℤ): Nat.brecOn",
+    "OeisA113254.a": "unsupported (ℤ): Nat.brecOn",
+    "OeisA113255.a": "unsupported (ℤ): Nat.brecOn",
     "OeisA113609.IsOeisPrimePower": "unsupported predicate: IsPrimePow",
     "OeisA113609.a": "unsupported predicate: IsPrimePow",
     "OeisA166944.IsDifferenceRecord": "unbounded quantifier",
     "OeisA17666.a": "Finset.sum over a non-ℕ type",
     "OeisA181391.a": "unsupported: OeisA181391.State.current",
     "OeisA182126.IsMostFrequent": "unbounded ∀",
+    "OeisA182510.a": "unsupported (ℤ): Nat.brecOn",
     "OeisA185150.a": "unsupported (ℤ): jacobiSym",
     "OeisA185895.IsTriangular": "unbounded ∃",
     "OeisA194806.a": "dependent if-then-else",
     "OeisA2.a": "unsupported: List.getD",
+    "OeisA211417.divisorProduct": "unsupported: OfNat.ofNat",
     "OeisA227582.a": "unsupported (ℤ): LinearRecurrence.mkSol",
+    "OeisA227582.baseSeq": "unsupported (ℤ): LinearRecurrence.mkSol",
     "OeisA228143.a": "unsupported (ℤ): Matrix.det",
     "OeisA231201.A": "unbounded ∃",
     "OeisA232174.A": "unbounded ∃",
@@ -1402,6 +1445,7 @@
     "OeisA37274.ReachesPrime": "unbounded ∃",
     "OeisA372761.a": "unsupported (ℚ): WellFounded.Nat.fix",
     "OeisA375439.a": "unsupported: Nat.strongRec",
+    "OeisA382590.a": "unsupported (ℤ): Prod.fst",
     "OeisA38552.HasClassNumber": "∃ over a non-ℕ type",
     "OeisA38552.IsA038552": "unsupported predicate: MaximalFor",
     "OeisA397588.a": "Finset.sum over a non-ℕ type",
@@ -1410,10 +1454,13 @@
     "OeisA51293.a": "Finset.card over a non-ℕ type",
     "OeisA5153.A": "unsupported Finset source: subsetSums",
     "OeisA56777.ComesFromPrimeQuadruple": "unbounded quantifier",
+    "OeisA60841.a": "unsupported (ℚ): Matrix.det",
     "OeisA60957.a": "Finset.image over a non-ℕ type",
     "OeisA63880.IsPrimitiveTerm": "unsupported predicate: Set.IsPrimitive",
     "OeisA67599.a": "unsupported list: List.flatMap",
     "OeisA67836.a": "unsupported: OeisA67836.State.term",
+    "OeisA71524.a": "unsupported (ℤ): Matrix.det",
+    "OeisA71524.generalDet": "unsupported (ℤ): Matrix.det",
     "OeisA76141.a": "unsupported: List.countP",
     "OeisA80170.A": "unsupported: Finset.gcd",
     "OeisA80170.B": "unsupported: Option.getD",
@@ -1422,6 +1469,7 @@
     "OeisA81091.isPrimeBitsSet": "unsupported: List.count",
     "OeisA83753.IsDecimalPalindrome": "equality at a non-ℕ type",
     "OeisA87207.a": "unsupported Finset source: Finsupp.support",
+    "OeisA87455.a": "unsupported (ℤ): Nat.brecOn",
     "OeisA87571.a": "unsupported: OeisA87571.a.match_1",
     "OeisA87571.concatNum": "unsupported: OeisA87571.ofDigitsMsf",
     "OpenQuantumProblem13.HasCompleteMUBs": "∃ over a non-ℕ type",
@@ -1438,17 +1486,18 @@
     "Sendov.Nat.SatisfiesSendovConjecture": "∀ over a non-ℕ type",
     "SolitaryNumber.IsSolitary": "unbounded quantifier",
     "SpectralSetProduct.spectralProductImpliesRightSpectral": "∀ over a non-ℕ type",
-    "Superperfect.PerfectFor": "unsupported: Nat.iterate"
+    "Superperfect.PerfectFor": "unsupported: Nat.iterate",
+    "lucasNumber": "body arity differs from type arity"
   },
   "evidence": {
     "extraction_fidelity": {
       "check": "budgeted IR interpreter == Lean's compiled corpus definition, on every evaluated input",
       "mismatches": 0
     },
-    "reference_cases": 22171,
-    "reference_ok": 18492,
-    "reference_overflow": 3679,
-    "skipped_over_budget": 5210,
+    "reference_cases": 23215,
+    "reference_ok": 19657,
+    "reference_overflow": 3558,
+    "skipped_over_budget": 5428,
     "differential": {
       "c_compcert": {
         "unsound": 0,
@@ -1467,13 +1516,13 @@
       "result": "PASS"
     },
     "objects_sha256": {
-      "lm2_gen.o": "ef3620c3be49d42e1b5b3d0a9974f950f5d1a46a7cf92bc4b8b952f4b4061fda",
-      "lm2_gen_cases.o": "eac4bc692f8adc4f07073f596229d348137087724e056a6f8bb630812042dc2f",
-      "LM2Nat.o": "212d840897d8d904946d2523f260f46ed3cff28fc8a67406084b0e54267d270c",
-      "LM2Wide.o": "0889b2b4a90ea2620d4958af6f2941c249c49b12be68252f31f653582a6275e9",
-      "LM2Gen.o": "34a52bdd3776a7f3f91be31390d825cf68016c6392c5624dd0d84e5c4ff87bdd",
-      "gen-test": "c8722ed05bfc2b5f3f864c4bd43d58ac6aa027f348d787531ff9bd6952f7df0f",
-      "acceptance-test": "6ecbc4cd10fe5f2e8c01dd8669af84239b3df7a18e1d93ab6b565e79a66221dd"
+      "lm2_gen.o": "551105fe384d7fe812d222a6f7c278815506d179b2122bdccda9dcf1a4cdd78c",
+      "lm2_gen_cases.o": "91fc87c1aa83f885a3c4fb3dbef1a28aa5bdcdb4a76239e45392cb7aa8ff6198",
+      "LM2Nat.o": "83c612d8b8b13b43855a59041e55b8ec921aa9dd127fcdc1fed6a467bf38f5a2",
+      "LM2Wide.o": "15f1c5cb704549bae82e73a0e3f39911d92d7eddd163e0e26db0cfbe337c50d5",
+      "LM2Gen.o": "9c2e47103d9ba0a5fe75d3c62f52d266a072495d7b13a9116133b05488bc20f3",
+      "gen-test": "6ca367102b1272e2aaecbf97a43a4e40554fad7e14544a1d230403a0cd2fbcbd",
+      "acceptance-test": "e24e649f0c1e21d1cdf8ff662deea3d5ea3ebc853621d9451ba9d3b2b0026539"
     },
     "int64_runtime_local_check": "lm2_iadd/isub/imul/ineg/ipow vs exact integers (Python), 60,000 cases incl. ±2^63 edges: 0 mismatches (gcc; CompCert build is the CI one above)",
     "wide_fallback": {
@@ -1498,11 +1547,12 @@
     "Incomplete = OVERFLOW where Lean's value fits in 64 bits. With the wide fallback this is 0 on every tested case; it remains possible in principle when an intermediate exceeds 4224 bits, when a loop bound exceeds 64 bits, or when minFac / primality / Ω gets an argument above 64 bits (the reference budget keeps tested inputs inside these limits).",
     "ℤ subterms run in 64-bit signed arithmetic on the fast path; on overflow the wide fallback recomputes them exactly (sign-magnitude, 4224-bit).",
     "ℚ subterms are evaluated only on the exact path (normalized fractions in the 4224-bit runtime); a numerator or denominator beyond capacity is reported as overflow.",
-    "5,210 inputs skipped and untested: IR evaluation exceeded the budget (intermediates ≥ 2^4096, 20,000 interpreter steps, choose n > 24, primality/minFac/Ω above 2^20, fib n > 6000, base-1 digits above 2^16, or a naive-recursion call tree above 2,000,000 calls).",
+    "5,428 inputs skipped and untested: IR evaluation exceeded the budget (intermediates ≥ 2^4096, 20,000 interpreter steps, choose n > 24, primality/minFac/Ω above 2^20, fib n > 6000, base-1 digits above 2^16, or a naive-recursion call tree above 2,000,000 calls).",
     "Inputs where a power has exponent > 2^32-1 are skipped: Lean 4.33.1's runtime Nat.pow (lean_nat_pow) panics and exits the process there, so the compiled corpus definition has no reference value (e.g. OeisA113258.a(16) contains 1^(16!)).",
     "Lookback recursion is compiled by Lean as naive recursion; inputs whose naive call tree exceeds the budget are skipped, although the generated C/Modula-2 (iterative window) would compute them.",
     "Testing covers finite input sets; no formal proof that generated code equals the Lean definitions."
   ],
   "v8_builtins_local_check": "pfnth / digat (lm2_nat.h, lm2_wide.h incl. result aliasing) vs an independent Python reference: 60,000 cases, 0 wrong (local, x86-64 gcc; not release evidence). Modula-2 versions are covered only by the CI differential above.",
-  "predicate_reference": "A Prop candidate P is checked against Lean's compiled decide (P xs) with the Decidable instance Lean synthesizes, or, if P has none, the instance for its unfolding (deltaExpand of corpus predicates; definitionally the same proposition). If Lean's compiler generates no code for that decision procedure there is no reference and P is blocked."
+  "predicate_reference": "A Prop candidate P is checked against Lean's compiled decide (P xs) with the Decidable instance Lean synthesizes, or, if P has none, the instance for its unfolding (deltaExpand of corpus predicates; definitionally the same proposition). If Lean's compiler generates no code for that decision procedure there is no reference and P is blocked.",
+  "int_result_abi": "A ℕᵏ → ℤ function writes the int64 two's-complement bits of its result to the uint64 result slot; a result outside [-2^63, 2^63) is reported as overflow (status 1), as a ℕ result above 2^64 - 1 is."
 }

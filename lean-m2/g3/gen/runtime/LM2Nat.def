@@ -34,6 +34,7 @@ PROCEDURE DigLen (b, n: LONGCARD) : LONGCARD;                   (* length of Nat
 PROCEDURE DigRev (b, n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* ofDigits b (digits b n).reverse *)
 (* MathIR v4: ℤ subterms as checked LONGINT (same algorithms as lm2_nat.h);
    TRUE = an intermediate left [MIN(LONGINT), MAX(LONGINT)] *)
+PROCEDURE IntBits (a: LONGINT) : LONGCARD;                      (* v10: two's-complement bits of a *)
 PROCEDURE NatAbs (a: LONGINT) : LONGCARD;
 PROCEDURE ToNat (a: LONGINT) : LONGCARD;                        (* 0 for a < 0 *)
 PROCEDURE ISign (a: LONGINT) : LONGINT;

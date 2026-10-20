@@ -65,3 +65,10 @@ instance : DecidablePred IsThreeOnes := fun n => by unfold IsThreeOnes; infer_in
 def evensBelow (n : Nat) : List Nat := (List.range n).filter (· % 2 == 0)
 def gaps (n : Nat) : Nat := (List.zip (evensBelow n) (evensBelow n).tail).countP fun pr => pr.snd - pr.fst == 2
 end T
+/-- Mathlib's `Nat.iterate` (absent from Lean core) -/
+def Nat.iterate {α : Sort _} (op : α → α) : Nat → α → α
+  | 0, a => a
+  | k + 1, a => Nat.iterate op k (op a)
+namespace T
+def iter3 (m n : Nat) : Nat := Nat.iterate (fun x => 3 * x + 1) m n
+end T

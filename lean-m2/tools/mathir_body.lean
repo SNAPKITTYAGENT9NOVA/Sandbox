@@ -478,6 +478,24 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
       tr { c with loops := c.loops.push (x, id) } (args[5]!.beta #[elem.beta #[x]])
     return .fold "max" id lo hi incl filt body
+  -- Finset.gcd f over a ℕ source (gcd ∅ = 0): an accumulator loop
+  if fn == `Finset.gcd && args.size == 6 then
+    unless isNatTy args[0]! && isNatTy args[1]! do bail "Finset.gcd over a non-ℕ type"
+    let id ← fresh c
+    let acc := accBase + (← fresh c)
+    let (lo, hi, incl, filt, elem) ← source c id args[4]!
+    let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
+      tr { c with loops := c.loops.push (x, id) } (args[5]!.beta #[elem.beta #[x]])
+    return .iter id acc lo hi incl filt (.lit 0) (.prim "gcd" [.lvar acc, body])
+  -- Nat.iterate f m x = f^[m] x: an accumulator loop over m steps
+  if fn == `Nat.iterate && args.size == 4 && isNatTy args[0]! then
+    let m ← tr c args[2]!
+    let x ← tr c args[3]!
+    let id ← fresh c
+    let acc := accBase + (← fresh c)
+    let body ← withLocalDeclD `a (mkConst ``Nat) fun a =>
+      tr { c with loops := c.loops.push (a, acc) } (args[1]!.beta #[a])
+    return .iter id acc (.lit 0) m false (.lit 1) x body
   -- Finset.lcm f over a ℕ source, into ℕ (lcm ∅ = 1; normalize is the identity on ℕ)
   if fn == `Finset.lcm && args.size == 6 then
     unless isNatTy args[0]! && isNatTy args[1]! do bail "Finset.lcm over a non-ℕ type"
@@ -571,6 +589,12 @@ partial def trProp (c : Ctx) (p : Expr) : TrM E := do
     let sq := E.bin "mul" (.lvar id) (.lvar id)
     return .and (.not (.cmp "eq" nv (.lit 0)))
       (.cmp "eq" (.fold "count" id (.lit 2) (.prim "sqrt" [nv]) true (.prim "dvd" [sq, nv]) (.lit 1)) (.lit 0))
+  -- IsPrimePow n on ℕ: n ≥ 2 and n = p ^ v_p(n) for p = minFac n
+  | `IsPrimePow, #[ty, _, n] =>
+    unless isNatTy ty do bail "IsPrimePow at a non-ℕ type"
+    let nv ← tr c n
+    let p := E.prim "minfac" [nv]
+    return .and (.cmp "le" (.lit 2) nv) (.cmp "eq" (.bin "pow" p (.prim "padic" [p, nv])) nv)
   -- IsSquare n on ℕ (∃ r, n = r * r): ⌊√n⌋² = n
   | `IsSquare, #[ty, _, n] =>
     unless isNatTy ty do bail "IsSquare at a non-ℕ type"

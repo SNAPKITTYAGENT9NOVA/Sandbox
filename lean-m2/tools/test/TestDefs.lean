@@ -53,3 +53,15 @@ def zfib : Nat → Int
   | 1 => -1
   | n + 2 => zfib (n + 1) - zfib n
 end T
+/-- Mathlib's `Nat.bits` (least significant bit first; [] for 0), absent from Lean core -/
+def Nat.bits : Nat → List Bool
+  | 0 => []
+  | n + 1 => ((n + 1) % 2 == 1) :: Nat.bits ((n + 1) / 2)
+decreasing_by omega
+namespace T
+def ones (n : Nat) : Nat := n.bits.count true
+def IsThreeOnes (n : Nat) : Prop := n.bits.count true = 3
+instance : DecidablePred IsThreeOnes := fun n => by unfold IsThreeOnes; infer_instance
+def evensBelow (n : Nat) : List Nat := (List.range n).filter (· % 2 == 0)
+def gaps (n : Nat) : Nat := (List.zip (evensBelow n) (evensBelow n).tail).countP fun pr => pr.snd - pr.fst == 2
+end T

@@ -105,6 +105,23 @@ partial def E.children : E → List E
 partial def E.calls (e : E) : List Name :=
   (match e with | .call f _ => [f] | _ => []) ++ e.children.flatMap E.calls
 
+/-- Replace loop variable `v` by `r` (ids are unique, so no capture). -/
+partial def E.substVar (e : E) (v : Nat) (r : E) : E :=
+  match e with
+  | .lvar w => if w == v then r else .lvar w
+  | .bin op a b => .bin op (a.substVar v r) (b.substVar v r)
+  | .prim op as => .prim op (as.map (·.substVar v r))
+  | .cmp k a b => .cmp k (a.substVar v r) (b.substVar v r)
+  | .and a b => .and (a.substVar v r) (b.substVar v r)
+  | .or a b => .or (a.substVar v r) (b.substVar v r)
+  | .not a => .not (a.substVar v r)
+  | .ite c t e => .ite (c.substVar v r) (t.substVar v r) (e.substVar v r)
+  | .fold op id lo hi incl f b => .fold op id (lo.substVar v r) (hi.substVar v r) incl (f.substVar v r) (b.substVar v r)
+  | .call fn as => .call fn (as.map (·.substVar v r))
+  | .iter id acc lo hi incl f i b =>
+    .iter id acc (lo.substVar v r) (hi.substVar v r) incl (f.substVar v r) (i.substVar v r) (b.substVar v r)
+  | x => x
+
 /-- Does `e` read the loop / accumulator variable `v`? -/
 partial def E.mentions (v : Nat) (e : E) : Bool :=
   (match e with | .lvar w => w == v | _ => false) || e.children.any (E.mentions v)
@@ -237,6 +254,9 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if let some (op, a, b) := binOp? e then return .bin op (← tr c a) (← tr c b)
   if e.isAppOfArity ``Nat.succ 1 then return .bin "add" (← tr c e.appArg!) (.lit 1)
   let (fn, args) := e.getAppFnArgs
+  if (fn == ``Prod.fst || fn == ``Prod.snd) && args.size == 3 then
+    let (g, ga) := args[2]!.consumeMData.getAppFnArgs
+    if g == ``Prod.mk && ga.size == 4 then return ← tr c (if fn == ``Prod.fst then ga[2]! else ga[3]!)
   -- MathIR v8 list-element markers (see `pfElem`, `digElem`)
   if fn == `MathIR.pfnth && args.size == 2 then return .prim "pfnth" [← tr c args[0]!, ← tr c args[1]!]
   if fn == `MathIR.digat && args.size == 3 then
@@ -331,6 +351,15 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
       tr { c with loops := c.loops.push (x, id) } (elem.beta #[x])
     return .fold "prod" id lo hi incl filt body
   -- l.count a = #{i | l[i] == a}; BEq must be the decidable-equality / Nat instance
+  if fn == ``List.count && args.size == 4 && args[0]!.isConstOf ``Bool then
+    unless args[1]!.consumeMData.getAppFn.isConstOf ``instBEqOfDecidableEq do bail "List.count with a non-standard BEq instance"
+    let (g, ga) := args[3]!.consumeMData.getAppFnArgs
+    unless g == `Nat.bits && ga.size == 1 do bail "List.count over a Bool list other than Nat.bits"
+    let n ← tr c ga[0]!
+    let bv ← trBool c args[2]!
+    let id ← fresh c
+    return .fold "count" id (.lit 0) (.prim "diglen" [.lit 2, n]) false
+      (.cmp "eq" (.prim "digat" [.lit 2, n, .lvar id]) bv) (.lit 1)
   if fn == ``List.count && args.size == 4 && isNatTy args[0]! then
     let inst := args[1]!.consumeMData.getAppFn
     unless inst.isConstOf ``instBEqOfDecidableEq || inst.isConstOf `instBEqNat do
@@ -341,6 +370,26 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     let e ← withLocalDeclD `k (mkConst ``Nat) fun x =>
       tr { c with loops := c.loops.push (x, id) } (elem.beta #[x])
     return .fold "count" id lo hi incl (andF filt (.cmp "eq" e a)) (.lit 1)
+  if fn == ``List.countP && args.size == 3 then
+    let (z, za) := args[2]!.consumeMData.getAppFnArgs
+    if z == ``List.zip && za.size == 4 && isNatTy za[0]! && isNatTy za[1]! then
+      let L := za[2]!
+      let (t, ta) := za[3]!.consumeMData.getAppFnArgs
+      unless t == ``List.tail && ta.size == 2 && (← isDefEq ta[1]! L) do bail "List.zip of two different lists"
+      let id ← fresh c
+      let (lo, hi, incl, filt, elem) ← lsource c id L
+      unless elem == idElem do bail "List.zip over a mapped list"
+      -- consecutive pairs (x, next x): next x = the first later element of the same enumeration
+      let id' ← fresh c
+      let acc := accBase + (← fresh c)
+      let (_, _, _, filt', _) ← lsource c id' L
+      let nxt := firstOf id' acc (.bin "add" (.lvar id) (.lit 1)) hi incl filt' (.lvar id') (.lit 0)
+      let hasNext := E.not (.cmp "eq" (E.fold "count" id' (.bin "add" (.lvar id) (.lit 1)) hi incl filt' (.lit 1)) (.lit 0))
+      let idy ← fresh c
+      let p ← withLocalDeclD `x (mkConst ``Nat) fun x => withLocalDeclD `y (mkConst ``Nat) fun y => do
+        let pr := mkApp4 (mkConst ``Prod.mk [levelOne, levelOne]) (mkConst ``Nat) (mkConst ``Nat) x y
+        trBool { c with loops := (c.loops.push (x, id)).push (y, idy) } (args[1]!.beta #[pr])
+      return .fold "count" id lo hi incl (andF filt (.and hasNext (p.substVar idy nxt))) (.lit 1)
   if fn == ``List.countP && args.size == 3 && isNatTy args[0]! then
     let id ← fresh c
     let (lo, hi, incl, filt, elem) ← lsource c id args[2]!
@@ -837,6 +886,15 @@ partial def lsource (c : Ctx) (id : Nat) (l : Expr) : TrM (E × E × Bool × E �
   if fn == ``List.map && args.size == 4 && isNatTy args[0]! && isNatTy args[1]! then
     let (lo, hi, incl, filt, e0) ← lsource c id args[3]!
     return (lo, hi, incl, filt, .lam `k (mkConst ``Nat) (.app args[2]! (.app e0 (.bvar 0))) .default)
+  -- MathIR v12: s.sort (· ≤ ·) for an identity-element ℕ source = its (ascending) enumeration
+  if fn == `Finset.sort && args.size ≥ 3 && isNatTy args[0]! then
+    let le ← withLocalDeclD `a (mkConst ``Nat) fun a => withLocalDeclD `b (mkConst ``Nat) fun b => do
+      let r := (args[1]!.beta #[a, b]).consumeMData
+      return r.isAppOfArity ``LE.le 4 && isNatTy r.getAppArgs[0]! && r.getAppArgs[2]! == a && r.getAppArgs[3]! == b
+    unless le do bail "Finset.sort by a relation other than (· ≤ ·)"
+    let (lo, hi, incl, filt, elem) ← source c id args.back!
+    unless elem == idElem do bail "Finset.sort of a mapped source"
+    return (lo, hi, incl, filt, elem)
   -- MathIR v8: prime factors with multiplicity (ascending) and base-b digits (least significant first)
   if fn == `Nat.primeFactorsList && args.size == 1 then
     return (.lit 0, .prim "bigomega" [← tr c args[0]!], false, .lit 1, pfElem args[0]!)

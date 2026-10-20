@@ -44,3 +44,12 @@ def zdiff (a b : Nat) : Int := (a : Int) - b
 def zneg (n : Nat) : Int := -(n : Int)
 def zpoly (n : Nat) : Int := 3 - (n : Int) * n
 end T
+namespace T
+def zalt : Nat → Int
+  | 0 => 1
+  | n + 1 => 2 - 3 * zalt n
+def zfib : Nat → Int
+  | 0 => 0
+  | 1 => -1
+  | n + 2 => zfib (n + 1) - zfib n
+end T

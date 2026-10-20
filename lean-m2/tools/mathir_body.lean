@@ -888,11 +888,20 @@ partial def lsource (c : Ctx) (id : Nat) (l : Expr) : TrM (E × E × Bool × E �
     return (lo, hi, incl, filt, .lam `k (mkConst ``Nat) (.app args[2]! (.app e0 (.bvar 0))) .default)
   -- MathIR v12: s.sort (· ≤ ·) for an identity-element ℕ source = its (ascending) enumeration
   if fn == `Finset.sort && args.size ≥ 3 && isNatTy args[0]! then
+    -- argument order differs across Mathlib versions: locate the set and the relation by type
+    let mut sArg? : Option Expr := none
+    let mut rArg? : Option Expr := none
+    for x in args.extract 1 args.size do
+      let t ← whnfR (← inferType x)
+      if t.isAppOfArity `Finset 1 then sArg? := some x
+      else if t.isForall then
+        if (← forallTelescope t fun xs b => pure (xs.size == 2 && b.isProp)) then rArg? := some x
+    let (some sArg, some rArg) := (sArg?, rArg?) | bail "Finset.sort: arguments not recognised"
     let le ← withLocalDeclD `a (mkConst ``Nat) fun a => withLocalDeclD `b (mkConst ``Nat) fun b => do
-      let r := (args[1]!.beta #[a, b]).consumeMData
+      let r := (rArg.beta #[a, b]).headBeta.consumeMData
       return r.isAppOfArity ``LE.le 4 && isNatTy r.getAppArgs[0]! && r.getAppArgs[2]! == a && r.getAppArgs[3]! == b
     unless le do bail "Finset.sort by a relation other than (· ≤ ·)"
-    let (lo, hi, incl, filt, elem) ← source c id args.back!
+    let (lo, hi, incl, filt, elem) ← source c id sArg
     unless elem == idElem do bail "Finset.sort of a mapped source"
     return (lo, hi, incl, filt, elem)
   -- MathIR v8: prime factors with multiplicity (ascending) and base-b digits (least significant first)

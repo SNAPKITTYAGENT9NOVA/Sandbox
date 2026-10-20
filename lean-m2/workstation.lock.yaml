@@ -32,8 +32,8 @@ workstation:
     installer: elan
     default_toolchain: none     # each project's lean-toolchain decides
   image:
-    reference: ghcr.io/snapkittyagent9nova/lean-m2-workstation:main
-    digest: REQUIRED            # from the CI build or `lean-m2 setup`
+    reference: ghcr.io/snapkittyagent9nova/lean-m2-workstation:c73046e6752db822cdaef261bc8ddb2eedd5c486   # immutable tag; :main moves with each main build
+    digest: sha256:33b225d6fa4f92ab4b267b4cf2546317dd75df7f86cbfa6c645e15b51f43c3d2   # published by G0 on main (run 39327716187, commit c73046e)
   execution:
     native: accepted
     emulated: blocked-unless-LEAN_M2_ALLOW_EMULATION=1   # QEMU then joins the trusted base

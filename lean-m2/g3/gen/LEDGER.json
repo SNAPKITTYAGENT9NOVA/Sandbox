@@ -1,12 +1,12 @@
 {
   "contract": "LEAN-M2-CC-001",
-  "component": "MathIR v12 generator (v11 + Nat.bits counts, Finset.sort (· ≤ ·) as a list, countP over consecutive pairs)",
-  "ci_run": 39405605963,
+  "component": "MathIR v13 generator (v12 + Finset.gcd, Nat.iterate, IsPrimePow)",
+  "ci_run": 39484798077,
   "supersedes": {
-    "component": "MathIR v11",
-    "ci_run": 39399525015,
-    "translated": 236,
-    "reference_cases": 23412
+    "component": "MathIR v12",
+    "ci_run": 39405605963,
+    "translated": 240,
+    "reference_cases": 23836
   },
   "corpus_commit": "84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88",
   "lean": "4.33.1 (819816b2e0a3bf405af45ae5c7af2491d8f5bee6)",
@@ -19,15 +19,15 @@
   "coverage": {
     "candidates": 446,
     "candidate_definition": "computable, safe, non-auxiliary def f : ℕ^k → ℕ (k ≤ 3) in corpus modules, no implemented_by/extern",
-    "translated": 240,
-    "blocked": 206,
+    "translated": 244,
+    "blocked": 202,
     "blocked_reasons": {
       "∃ over a non-ℕ type": 28,
-      "unsupported constant": 28,
+      "unsupported constant": 26,
       "unbounded ∃": 24,
-      "unbounded quantifier": 21,
       "∀ over a non-ℕ type": 21,
-      "unsupported predicate": 16,
+      "unbounded quantifier": 21,
+      "unsupported predicate": 14,
       "unsupported Finset source": 7,
       "Finset.card over a non-ℕ type": 6,
       "calls untranslated function": 5,
@@ -64,31 +64,31 @@
     "top_unsupported_constants": {
       "Fintype.card": 4,
       "Nat.floor": 3,
-      "Set.InjOn": 2,
-      "Nat.strongRec": 2,
-      "IsPrimePow": 2,
-      "Finsupp.prod": 2,
-      "subsetSums": 2,
       "Finset.Nonempty": 2,
+      "Nat.strongRec": 2,
+      "Finsupp.prod": 2,
+      "Set.InjOn": 2,
+      "subsetSums": 2,
       "DFunLike.coe": 2,
       "IsWieferichPrimeBase": 2,
       "Finsupp.support": 2,
       "Set.Icc": 1,
-      "DiophantineTuple.IsIntegralDiophantineTuple": 1,
+      "IsGreatest": 1,
+      "IsLeast": 1,
       "OeisA267581.caState": 1,
       "numTransversals": 1,
       "Option.getD": 1,
       "Irrational": 1,
       "Prod.snd": 1,
       "Asymptotics.IsEquivalent": 1,
-      "OeisA67836.State.term": 1
+      "OfNat.ofNat": 1
     }
   },
   "newly_translated": [
-    "OeisA237271.a",
-    "OeisA237271.num2DenseSublists",
-    "OeisA81091.A",
-    "OeisA81091.isPrimeBitsSet"
+    "OeisA113609.IsOeisPrimePower",
+    "OeisA113609.a",
+    "OeisA80170.A",
+    "Superperfect.PerfectFor"
   ],
   "translated_functions": [
     {
@@ -578,6 +578,16 @@
       "result": "nat"
     },
     {
+      "name": "OeisA113609.IsOeisPrimePower",
+      "arity": 1,
+      "result": "prop"
+    },
+    {
+      "name": "OeisA113609.a",
+      "arity": 1,
+      "result": "nat"
+    },
+    {
       "name": "OeisA1146.a",
       "arity": 1,
       "result": "nat"
@@ -1046,6 +1056,11 @@
       "result": "nat"
     },
     {
+      "name": "OeisA80170.A",
+      "arity": 1,
+      "result": "prop"
+    },
+    {
       "name": "OeisA81091.A",
       "arity": 1,
       "result": "prop"
@@ -1142,6 +1157,11 @@
     {
       "name": "SolitaryNumber.Friendly",
       "arity": 2,
+      "result": "prop"
+    },
+    {
+      "name": "Superperfect.PerfectFor",
+      "arity": 3,
       "result": "prop"
     },
     {
@@ -1463,8 +1483,6 @@
     "OeisA109671.a": "recursion in a non-recursive equation",
     "OeisA112521.T": "recursion in a non-recursive equation",
     "OeisA112970.a": "recursion in a non-recursive equation",
-    "OeisA113609.IsOeisPrimePower": "unsupported predicate: IsPrimePow",
-    "OeisA113609.a": "unsupported predicate: IsPrimePow",
     "OeisA166944.IsDifferenceRecord": "unbounded quantifier",
     "OeisA17666.a": "Finset.sum over a non-ℕ type",
     "OeisA181391.a": "unsupported: OeisA181391.State.current",
@@ -1522,7 +1540,6 @@
     "OeisA71524.a": "unsupported (ℤ): Matrix.det",
     "OeisA71524.generalDet": "unsupported (ℤ): Matrix.det",
     "OeisA76141.a": "unsupported: List.countP",
-    "OeisA80170.A": "unsupported: Finset.gcd",
     "OeisA80170.B": "unsupported: Option.getD",
     "OeisA80326.a": "unsupported (ℤ): DFunLike.coe",
     "OeisA83753.IsDecimalPalindrome": "equality at a non-ℕ type",
@@ -1543,7 +1560,6 @@
     "Sendov.Nat.SatisfiesSendovConjecture": "∀ over a non-ℕ type",
     "SolitaryNumber.IsSolitary": "unbounded quantifier",
     "SpectralSetProduct.spectralProductImpliesRightSpectral": "∀ over a non-ℕ type",
-    "Superperfect.PerfectFor": "unsupported: Nat.iterate",
     "lucasNumber": "partial application in equation"
   },
   "evidence": {
@@ -1551,10 +1567,10 @@
       "check": "budgeted IR interpreter == Lean's compiled corpus definition, on every evaluated input",
       "mismatches": 0
     },
-    "reference_cases": 23836,
-    "reference_ok": 20218,
-    "reference_overflow": 3618,
-    "skipped_over_budget": 5875,
+    "reference_cases": 24122,
+    "reference_ok": 20537,
+    "reference_overflow": 3585,
+    "skipped_over_budget": 6081,
     "differential": {
       "c_compcert": {
         "unsound": 0,
@@ -1573,13 +1589,13 @@
       "result": "PASS"
     },
     "objects_sha256": {
-      "lm2_gen.o": "955313784be560c3d8f970302b35a72f2ba84fd2d6ea99bb615060eec87bbadf",
-      "lm2_gen_cases.o": "266786751fae651bfe139d406f545bed0365b3147bd62118796a39b2ae3e10d4",
+      "lm2_gen.o": "5eba31b1f0b3a1041cd889c5beae440ec7811f12f195a7735794bff212e53319",
+      "lm2_gen_cases.o": "42cb0100d6e7c8c1fb23c782b0e28b7e16812f0c6ff8df3126af01e6b8812d53",
       "LM2Nat.o": "83c612d8b8b13b43855a59041e55b8ec921aa9dd127fcdc1fed6a467bf38f5a2",
       "LM2Wide.o": "15f1c5cb704549bae82e73a0e3f39911d92d7eddd163e0e26db0cfbe337c50d5",
-      "LM2Gen.o": "34dab8a5fb2f6ff73af04b8726fb04f0a2dac3840e1f256650b9b087c5d2753a",
-      "gen-test": "aadfedce4c39a1343fabc6f8b6e2b45bdf4f8de7e5b4c9ea2ff4c52e0fac5015",
-      "acceptance-test": "ed781dbe7ff457c9c65ab9f4a2b67bee5648141c8efd3b2810644de96ae70302"
+      "LM2Gen.o": "a257e963386166c572b8b6e96f0a9fb7d6769dd42953dff881ba9dfc9a7d347b",
+      "gen-test": "63e401825c5c54b3265005e199e805227c69cf0cc6361ffd5adc76280b52870a",
+      "acceptance-test": "42eedb3caef5a1d22eda9a7f8cecc7d368e5def11d8227f9c04735fd299336b8"
     },
     "int64_runtime_local_check": "lm2_iadd/isub/imul/ineg/ipow vs exact integers (Python), 60,000 cases incl. ±2^63 edges: 0 mismatches (gcc; CompCert build is the CI one above)",
     "wide_fallback": {
@@ -1604,7 +1620,7 @@
     "Incomplete = OVERFLOW where Lean's value fits in 64 bits. With the wide fallback this is 0 on every tested case; it remains possible in principle when an intermediate exceeds 4224 bits, when a loop bound exceeds 64 bits, or when minFac / primality / Ω gets an argument above 64 bits (the reference budget keeps tested inputs inside these limits).",
     "ℤ subterms run in 64-bit signed arithmetic on the fast path; on overflow the wide fallback recomputes them exactly (sign-magnitude, 4224-bit).",
     "ℚ subterms are evaluated only on the exact path (normalized fractions in the 4224-bit runtime); a numerator or denominator beyond capacity is reported as overflow.",
-    "5,875 inputs skipped and untested: IR evaluation exceeded the budget (intermediates ≥ 2^4096, 20,000 interpreter steps, choose n > 24, primality/minFac/Ω above 2^20, fib n > 6000, base-1 digits above 2^16, or a naive-recursion call tree above 2,000,000 calls).",
+    "6,081 inputs skipped and untested: IR evaluation exceeded the budget (intermediates ≥ 2^4096, 20,000 interpreter steps, choose n > 24, primality/minFac/Ω above 2^20, fib n > 6000, base-1 digits above 2^16, or a naive-recursion call tree above 2,000,000 calls).",
     "Inputs where a power has exponent > 2^32-1 are skipped: Lean 4.33.1's runtime Nat.pow (lean_nat_pow) panics and exits the process there, so the compiled corpus definition has no reference value (e.g. OeisA113258.a(16) contains 1^(16!)).",
     "Lookback recursion is compiled by Lean as naive recursion; inputs whose naive call tree exceeds the budget are skipped, although the generated C/Modula-2 (iterative window) would compute them.",
     "Testing covers finite input sets; no formal proof that generated code equals the Lean definitions."

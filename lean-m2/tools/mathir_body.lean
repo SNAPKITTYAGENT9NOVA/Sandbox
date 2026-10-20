@@ -478,6 +478,26 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
       tr { c with loops := c.loops.push (x, id) } (args[5]!.beta #[elem.beta #[x]])
     return .fold "max" id lo hi incl filt body
+  -- ⌊q⌋₊ for q : ℚ: num / den for q ≥ 0, else 0 (ℚ runs on the exact path)
+  if fn == `Nat.floor && args.size ≥ 2 && isRatTy args[0]! then
+    let q ← trQ c args.back!
+    return .bin "div" (.prim "tonat" [.prim "qnum" [q]]) (.prim "qden" [q])
+  -- (s.max).getD d for a ℕ source: d if s is empty, else its maximum
+  if fn == ``Option.getD && args.size == 3 && isNatTy args[0]! then
+    let (g, ga) := args[1]!.consumeMData.getAppFnArgs
+    unless g == `Finset.max && ga.size == 3 && isNatTy ga[0]! do bail "unsupported: Option.getD"
+    let id ← fresh c
+    let (lo, hi, incl, filt, elem) ← source c id ga[2]!
+    let e ← withLocalDeclD `k (mkConst ``Nat) fun x => tr { c with loops := c.loops.push (x, id) } (elem.beta #[x])
+    let id' ← fresh c
+    let (lo', hi', incl', filt', _) ← source c id' ga[2]!
+    return .ite (.cmp "eq" (.fold "count" id' lo' hi' incl' filt' (.lit 1)) (.lit 0)) (← tr c args[2]!)
+      (.fold "max" id lo hi incl filt e)
+  -- π n = #{p ≤ n | p prime}; π' n = #{p < n | p prime}
+  if (fn == `Nat.primeCounting || fn == `Nat.primeCounting') && args.size == 1 then
+    let n ← tr c args[0]!
+    let id ← fresh c
+    return .fold "count" id (.lit 0) n (fn == `Nat.primeCounting) (.prim "prime" [.lvar id]) (.lit 1)
   -- Finset.gcd f over a ℕ source (gcd ∅ = 0): an accumulator loop
   if fn == `Finset.gcd && args.size == 6 then
     unless isNatTy args[0]! && isNatTy args[1]! do bail "Finset.gcd over a non-ℕ type"
@@ -533,6 +553,11 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     match offsetPattern? args[j]! with
     | some (m', d) => if m' == m && d < c.K then return .prev d else bail "recursive call outside the lookback window"
     | none => bail "recursive call on a non-offset argument"
+  -- a ℕ constant defined by a value (`abbrev base : ℕ := 10`): inline it (bounded depth)
+  if fn != .anonymous && args.isEmpty && c.depth < 4 then
+    if let some ci := (← getEnv).find? fn then
+      if isNatTy ci.type && ci.levelParams.isEmpty then
+        if let some v := ci.value? then return ← tr { c with depth := c.depth + 1 } v
   -- call to another ℕ function: translated only if that function is translated (closure later)
   if fn != .anonymous then
     let ci ← getConstInfo fn

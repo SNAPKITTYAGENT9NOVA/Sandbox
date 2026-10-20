@@ -72,3 +72,7 @@ def Nat.iterate {α : Sort _} (op : α → α) : Nat → α → α
 namespace T
 def iter3 (m n : Nat) : Nat := Nat.iterate (fun x => 3 * x + 1) m n
 end T
+namespace T
+abbrev base : Nat := 10
+def lastDigit (n : Nat) : Nat := n % base
+end T

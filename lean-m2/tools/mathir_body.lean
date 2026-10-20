@@ -476,11 +476,52 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
 /-- Translate a decidable proposition to a boolean (0 / 1) expression. -/
 partial def trProp (c : Ctx) (p : Expr) : TrM E := do
   let p := p.consumeMData
+  if let .letE _ _ v b _ := p then return ← trProp c (b.instantiate1 v)
   if p.isApp && p.getAppFn.isLambda then return ← trProp c p.headBeta   -- local `let f := fun …` applied
   if p.isConstOf ``True then return .lit 1
   if p.isConstOf ``False then return .lit 0
+  -- MathIR v9: implication, and bounded ∀ (`∀ x < n, P x`, `∀ x ≤ n, …`, `∀ x ∈ s, …`)
+  if let .forallE nm ty body _ := p then
+    if !body.hasLooseBVars then return .or (.not (← trProp c ty)) (← trProp c body)
+    unless isNatTy ty do bail "∀ over a non-ℕ type"
+    return ← withLocalDeclD nm ty fun x => do
+      let .forallE _ h rest _ := (body.instantiate1 x).consumeMData | bail "unbounded ∀"
+      if rest.hasLooseBVars then bail "∀ whose body uses the bound proof"
+      let cnt ← quant c x h rest true
+      return .cmp "eq" cnt (.lit 0)
   let (fn, args) := p.getAppFnArgs
   match fn, args with
+  | ``Exists, #[ty, f] =>
+    unless isNatTy ty do bail "∃ over a non-ℕ type"
+    let .lam nm _ body _ := f.consumeMData | bail "∃ without a binder"
+    withLocalDeclD nm ty fun x => do
+      let (g, ga) := (body.instantiate1 x).consumeMData.getAppFnArgs
+      unless g == ``And && ga.size == 2 do bail "unbounded ∃"
+      let cnt ← quant c x ga[0]! ga[1]! false
+      return .not (.cmp "eq" cnt (.lit 0))
+  | ``Iff, #[q, r] => return .cmp "eq" (← trProp c q) (← trProp c r)
+  | ``Membership.mem, #[ty, _, _, s, x] =>
+    -- x ∈ s for a ℕ source: some enumerated element equals x
+    unless isNatTy ty do bail "∈ at a non-ℕ type"
+    let xv ← tr c x
+    let id ← fresh c
+    let (lo, hi, incl, filt, elem) ← (if (← inferType s).isAppOf ``List then lsource c id s else source c id s)
+    let e ← withLocalDeclD `k (mkConst ``Nat) fun k =>
+      tr { c with loops := c.loops.push (k, id) } (elem.beta #[k])
+    return .not (.cmp "eq" (.fold "count" id lo hi incl (andF filt (.cmp "eq" e xv)) (.lit 1)) (.lit 0))
+  -- Squarefree n on ℕ: n ≠ 0 and no d ∈ [2, √n] with d² ∣ n (any such d has d² ≤ n)
+  | `Squarefree, #[ty, _, n] =>
+    unless isNatTy ty do bail "Squarefree at a non-ℕ type"
+    let nv ← tr c n
+    let id ← fresh c
+    let sq := E.bin "mul" (.lvar id) (.lvar id)
+    return .and (.not (.cmp "eq" nv (.lit 0)))
+      (.cmp "eq" (.fold "count" id (.lit 2) (.prim "sqrt" [nv]) true (.prim "dvd" [sq, nv]) (.lit 1)) (.lit 0))
+  -- IsSquare n on ℕ (∃ r, n = r * r): ⌊√n⌋² = n
+  | `IsSquare, #[ty, _, n] =>
+    unless isNatTy ty do bail "IsSquare at a non-ℕ type"
+    let nv ← tr c n
+    return .cmp "eq" (.bin "mul" (.prim "sqrt" [nv]) (.prim "sqrt" [nv])) nv
   | ``LT.lt, #[ty, _, a, b] =>
     if isNatTy ty then return .cmp "lt" (← tr c a) (← tr c b)
     else if isIntTy ty then return .cmp "ilt" (← trI c a) (← trI c b)
@@ -515,7 +556,40 @@ partial def trProp (c : Ctx) (p : Expr) : TrM E := do
   | `Nat.Coprime, #[a, b] => return .cmp "eq" (.prim "gcd" [← tr c a, ← tr c b]) (.lit 1)
   | `Even, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 0) else bail "Even at a non-ℕ type"
   | `Odd, #[ty, _, n] => if isNatTy ty then return .cmp "eq" (.bin "mod" (← tr c n) (.lit 2)) (.lit 1) else bail "Odd at a non-ℕ type"
-  | _, _ => bail s!"unsupported predicate: {fn}"
+  | _, _ =>
+    -- MathIR v9: a non-recursive predicate ℕ^k → Prop defined by its body: inline it (bounded depth)
+    if fn != .anonymous && c.depth < 4 then
+      if let some ci := (← getEnv).find? fn then
+        if let some v := ci.value? then
+          let ok ← forallTelescope ci.type fun xs body => do
+            unless body.isProp && xs.size == args.size && !xs.isEmpty do return false
+            for x in xs do
+              unless isNatTy (← inferType x) do return false
+            return true
+          if ok then return ← trProp { c with depth := c.depth + 1 } (v.beta args)
+    bail s!"unsupported predicate: {fn}"
+
+/-- Count of the elements x of the bound `h` (`x < n`, `x ≤ n`, `x ∈ s`) for which `P x` holds
+(`neg = false`) or fails (`neg = true`); `x` is a free variable of `h` and `P`. -/
+partial def quant (c : Ctx) (x : Expr) (h P : Expr) (neg : Bool) : TrM E := do
+  let id ← fresh c
+  let (g, ga) := h.consumeMData.getAppFnArgs
+  let (lo, hi, incl, filt, elem) ← match g, ga with
+    | ``LT.lt, #[ty, _, a, b] => do
+      unless isNatTy ty && a == x do bail "unbounded quantifier"
+      pure (E.lit 0, ← tr c b, false, E.lit 1, idElem)
+    | ``LE.le, #[ty, _, a, b] => do
+      unless isNatTy ty && a == x do bail "unbounded quantifier"
+      pure (E.lit 0, ← tr c b, true, E.lit 1, idElem)
+    | ``Membership.mem, #[ty, _, _, s, a] => do
+      unless isNatTy ty && a == x do bail "unbounded quantifier"
+      if s.containsFVar x.fvarId! then bail "quantifier bound mentions its own variable"
+      if (← inferType s).isAppOf ``List then lsource c id s else source c id s
+    | _, _ => bail "unbounded quantifier"
+  let Pa := P.abstract #[x]
+  let body ← withLocalDeclD `k (mkConst ``Nat) fun k =>
+    trProp { c with loops := c.loops.push (k, id) } (Pa.instantiate1 (elem.beta #[k]))
+  return .fold "count" id lo hi incl (andF filt (if neg then .not body else body)) (.lit 1)
 
 /-- Translate a `Bool` to a 0 / 1 expression. -/
 partial def trBool (c : Ctx) (b : Expr) : TrM E := do
@@ -540,7 +614,33 @@ partial def trBool (c : Ctx) (b : Expr) : TrM E := do
   | ``Nat.ble, #[x, y] => return .cmp "le" (← tr c x) (← tr c y)
   | ``Nat.blt, #[x, y] => return .cmp "lt" (← tr c x) (← tr c y)
   | ``Nat.beq, #[x, y] => return .cmp "eq" (← tr c x) (← tr c y)
-  | _, _ => bail s!"unsupported (Bool): {fn}"
+  | ``List.any, #[ty, l, f] | ``List.all, #[ty, l, f] =>
+    unless isNatTy ty do bail "List.any / all over a non-ℕ list"
+    let id ← fresh c
+    let (lo, hi, incl, filt, elem) ← lsource c id l
+    let q ← withLocalDeclD `k (mkConst ``Nat) fun k =>
+      trBool { c with loops := c.loops.push (k, id) } (f.beta #[elem.beta #[k]])
+    let all := fn == ``List.all
+    let cnt := E.fold "count" id lo hi incl (andF filt (if all then .not q else q)) (.lit 1)
+    return if all then .cmp "eq" cnt (.lit 0) else .not (.cmp "eq" cnt (.lit 0))
+  | ``ite, #[ty, q, _, t, e] =>
+    unless ty.isConstOf ``Bool do bail "ite at a non-Bool type"
+    return .ite (← trProp c q) (← trBool c t) (← trBool c e)
+  | ``cond, #[ty, q, t, e] =>
+    unless ty.isConstOf ``Bool do bail "cond at a non-Bool type"
+    return .ite (← trBool c q) (← trBool c t) (← trBool c e)
+  | _, _ =>
+    -- MathIR v9: a non-recursive helper ℕ^k → Bool defined by its body: inline it (bounded depth)
+    if fn != .anonymous && c.depth < 4 then
+      if let some ci := (← getEnv).find? fn then
+        if let some v := ci.value? then
+          let ok ← forallTelescope ci.type fun xs body => do
+            unless body.isConstOf ``Bool && xs.size == args.size && !xs.isEmpty do return false
+            for x in xs do
+              unless isNatTy (← inferType x) do return false
+            return true
+          if ok then return ← trBool { c with depth := c.depth + 1 } (v.beta args)
+    bail s!"unsupported (Bool): {fn}"
 
 /-- Translate a ℚ-valued expression (left via `Rat.num` / `Rat.den`). -/
 partial def trQ (c : Ctx) (e : Expr) : TrM E := do
@@ -750,9 +850,35 @@ def natArity? (ty : Expr) : MetaM (Option Nat) :=
       unless (← x.fvarId!.getBinderInfo).isExplicit do return none
     return some xs.size
 
-/-- Read the definition from its equation lemmas (or, if it has none, its body). -/
-def extract (n : Name) (arity : Nat) : MetaM (Except String FnDef) := do
+/-- Result sort of a candidate (MathIR v9): ℕ, or a predicate (Prop / Bool) encoded as 0 / 1. -/
+inductive Kind where
+  | nat | prop | bool
+  deriving BEq, Inhabited
+
+/-- `(arity, kind)` if `ty` is `ℕ → … → R` with 1–3 explicit ℕ binders and R ∈ {ℕ, Prop, Bool}. -/
+def sigOf? (ty : Expr) : MetaM (Option (Nat × Kind)) :=
+  forallTelescope ty fun xs body => do
+    let some k := (if isNatTy body then some Kind.nat else if body.isProp then some Kind.prop
+      else if body.isConstOf ``Bool then some Kind.bool else none) | return none
+    if xs.isEmpty || xs.size > 3 then return none
+    for x in xs do
+      unless isNatTy (← inferType x) do return none
+      unless (← x.fvarId!.getBinderInfo).isExplicit do return none
+    return some (xs.size, k)
+
+/-- Read the definition from its equation lemmas (or, if it has none, its body). Predicates are
+read from their body only (a recursive predicate elaborates to a recursor and is rejected). -/
+def extract (n : Name) (arity : Nat) (kind : Kind := .nat) : MetaM (Except String FnDef) := do
   let ctr ← IO.mkRef 0
+  if kind != .nat then
+    let ci ← getConstInfo n
+    let some v := ci.value? | return .error "no definition body"
+    return ← lambdaTelescope v fun xs body => do
+      if xs.size != arity then return .error "body arity differs from type arity"
+      let c : Ctx := { self := n, args := xs, idx? := none, recArg := none, ctr }
+      match ← (if kind == .prop then trProp c body else trBool c body).run with
+      | .ok e => return .ok (.direct arity e)
+      | .error r => return .error r
   let eqns? ← try getEqnsFor? n catch _ => pure none
   let eqns := eqns?.getD #[]
   if eqns.isEmpty then
@@ -2444,12 +2570,55 @@ def runIR (defs : Std.HashMap Name FnDef) (n : Name) (xs : List Nat) : Option Na
 
 def u64Max : Nat := 2 ^ 64 - 1
 
-unsafe def evalN (env : Environment) (n : Name) (arity : Nat) (args : List Nat) : Except String Nat := do
-  match arity, args with
-  | 1, [a] => return (← env.evalConst (Nat → Nat) {} n (checkMeta := false)) a
-  | 2, [a, b] => return (← env.evalConst (Nat → Nat → Nat) {} n (checkMeta := false)) a b
-  | 3, [a, b, c] => return (← env.evalConst (Nat → Nat → Nat → Nat) {} n (checkMeta := false)) a b c
-  | _, _ => throw "arity"
+/-- The Lean reference for a candidate: its compiled corpus definition. A ℕ- or Bool-valued
+definition is evaluated directly; for a predicate `P`, `fun xs => decide (P xs)` is compiled with
+the Decidable instance Lean synthesizes (any instance decides the same proposition). A predicate
+with no computable instance has no reference, so it is blocked. -/
+unsafe def refOf (n : Name) (arity : Nat) (kind : Kind) (isPred : Name → Bool := fun _ => false) :
+    MetaM (List Nat → Except String Nat) := do
+  let mut target := n
+  if kind == .prop then
+    let ci ← getConstInfo n
+    unless ci.levelParams.isEmpty do throwError "universe-polymorphic predicate"
+    let lam? ← forallTelescope ci.type fun xs _ => do
+      let p := mkAppN (mkConst n) xs
+      if let some inst ← synthInstance? (mkApp (mkConst ``Decidable) p) then
+        return some (← mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) p inst))
+      -- no instance for `P xs`: unfold the corpus predicates in it (definitionally the same
+      -- proposition) and ask for an instance of the unfolded statement
+      let q ← deltaExpand p isPred
+      let some inst ← synthInstance? (mkApp (mkConst ``Decidable) q) | return none
+      return some (← mkLambdaFVars xs (mkApp2 (mkConst ``Decidable.decide) q inst))
+    let some lam := lam? | throwError "NOREF no Decidable instance"
+    target := `LeanM2.MathIR.ref ++ n
+    let lamTy ← inferType lam
+    let dv : DefinitionVal := { name := target, levelParams := [], type := lamTy, value := lam, hints := .opaque, safety := .safe }
+    -- The kernel checks the reference definition (an ill-typed term is a translator bug and fails
+    -- the run). Whether it is executable is the compiler's verdict, and the compiler reports a
+    -- refusal asynchronously, as a message after this command, not as an exception or a log entry
+    -- here. So compile without logging and read the verdict from the generated code: no IR means
+    -- Lean has no executable decision procedure for P, hence no reference, and P is blocked.
+    addDecl (.defnDecl dv)
+    compileDecl (.defnDecl dv) (logErrors := false)
+    if (IR.findEnvDecl (← getEnv) target).isNone then
+      let env ← getEnv
+      let nc := lam.getUsedConstants.filter (isNoncomputable env) |>.toList
+      throwError "NOREF Lean's compiler generates no code for decide (P xs) (noncomputable constants in it: {nc})"
+  let env ← getEnv
+  let ev (α : Type) : MetaM α := do
+    match env.evalConst α {} target (checkMeta := false) with
+    | .ok f => pure f
+    | .error e => throwError e
+  if kind == .nat then
+    match arity with
+    | 1 => let f ← ev (Nat → Nat); return fun | [a] => .ok (f a) | _ => .error "arity"
+    | 2 => let f ← ev (Nat → Nat → Nat); return fun | [a, b] => .ok (f a b) | _ => .error "arity"
+    | _ => let f ← ev (Nat → Nat → Nat → Nat); return fun | [a, b, c] => .ok (f a b c) | _ => .error "arity"
+  else
+    match arity with
+    | 1 => let f ← ev (Nat → Bool); return fun | [a] => .ok (f a).toNat | _ => .error "arity"
+    | 2 => let f ← ev (Nat → Nat → Bool); return fun | [a, b] => .ok (f a b).toNat | _ => .error "arity"
+    | _ => let f ← ev (Nat → Nat → Nat → Bool); return fun | [a, b, c] => .ok (f a b c).toNat | _ => .error "arity"
 
 def lcg (s : UInt64) : UInt64 := s * 6364136223846793005 + 1442695040888963407
 
@@ -2499,6 +2668,8 @@ set_option maxHeartbeats 0 in
     ((l.splitOn "\t").drop 1).foldl Name.mkStr .anonymous
   -- 1. candidates
   let mut cands : Array (Name × Nat) := #[]
+  let mut kinds : Std.HashMap Name Kind := {}
+  let mut internal : Array (Name × String) := #[]
   for m in wanted do
     let some idx := env.header.moduleNames.findIdx? (· == m) | continue
     for ci in env.header.moduleData[idx]!.constants do
@@ -2506,7 +2677,8 @@ set_option maxHeartbeats 0 in
       unless dv.safety == .safe do continue
       if isNoncomputable env ci.name || ci.name.isInternal then continue
       if (Compiler.getImplementedBy? env ci.name).isSome || isExtern env ci.name then continue
-      if let some k ← natArity? ci.type then cands := cands.push (ci.name, k)
+      if let some (k, kd) ← sigOf? ci.type then
+        cands := cands.push (ci.name, k); kinds := kinds.insert ci.name kd
   cands := cands.qsort (fun a b => a.1.toString < b.1.toString)
   progress s!"candidates={cands.size}; extracting"
   -- 2. extract
@@ -2514,10 +2686,26 @@ set_option maxHeartbeats 0 in
   let mut blocked : Array (Name × String) := #[]
   for (n, k) in cands do
     progress s!"extract {n}"
-    match ← (try extract n k catch e => do pure (.error s!"exception: {← e.toMessageData.toString}")) with
-    | .ok d => defs := defs.insert n d
-    | .error r => blocked := blocked.push (n, r)
-  progress s!"extraction done: translated={defs.size} blocked={blocked.size}"
+    -- a `bail` (unsupported construct) blocks the function; an exception is a translator bug
+    match ← (try (Sum.inl <$> extract n k (kinds.getD n .nat)) catch e => do pure (.inr (← e.toMessageData.toString))) with
+    | .inl (.ok d) => defs := defs.insert n d
+    | .inl (.error r) => blocked := blocked.push (n, r)
+    | .inr msg => internal := internal.push (n, msg)
+  progress s!"extraction done: translated={defs.size} blocked={blocked.size} internal_errors={internal.size}"
+  unless internal.isEmpty do
+    throwError m!"MATHIR INTERNAL ERRORS ({internal.size}): {internal.toList.take 10}"
+  -- 2b. Lean references (compiled once per function; a predicate without one is blocked)
+  let mut refs : Std.HashMap Name (List Nat → Except String Nat) := {}
+  for (n, d) in defs.toList do
+    -- only the NOREF outcomes block; any other exception fails the run
+    match ← (try (Except.ok <$> unsafe refOf n d.arity (kinds.getD n .nat) (fun m => kinds.get? m == some .prop))
+             catch e => do
+               let m ← e.toMessageData.toString
+               if m.startsWith "NOREF " then pure (.error ((m.drop 6).toString)) else throw e) with
+    | .ok f => refs := refs.insert n f
+    | .error r =>
+      defs := defs.erase n
+      blocked := blocked.push (n, s!"no Lean reference: {r}")
   -- 3. closure over calls
   let mut changed := true
   while changed do
@@ -2599,7 +2787,7 @@ set_option maxHeartbeats 0 in
       -- logged before the call: a runtime panic in compiled corpus code kills the process
       -- without flushing `#eval` output, so this line is the only record of the failing input
       progress s!"  lean {n} {xs}"
-      match unsafe evalN env n d.arity xs with
+      match (refs.getD n (fun _ => .error "no reference")) xs with
       | .error e => evalFail := evalFail.push (n, e); break
       | .ok v =>
         if v != irv then mismatch := mismatch.push (n, xs, v, irv)
@@ -2650,7 +2838,8 @@ set_option maxHeartbeats 0 in
         consts := consts.insert k (consts.getD k 0 + 1)
   let topConsts := ((consts.toList.toArray.qsort (fun a b => a.2 > b.2)).toList.take 20).map fun (k, v) => s!"  {v}  {k}"
   let kindOf (n : Name) : String := match defs.get! n with
-    | .direct .. => "" | .recur _ _ bs _ => s!", rec K={bs.length}"
+    | .direct .. => (match kinds.getD n .nat with | .prop => ", prop" | .bool => ", bool" | .nat => "")
+    | .recur _ _ bs _ => s!", rec K={bs.length}"
   let summary := s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok} skipped_over_budget={skipped} ir_fidelity_mismatches=0"
   let report := summary ++ "\ntranslated:\n" ++
     String.join (order.toList.map fun n => s!"  {n} ({(defs.get! n).arity}-ary{kindOf n})\n") ++

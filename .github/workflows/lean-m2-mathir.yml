@@ -10,10 +10,10 @@ name: lean-m2 MathIR (generator)
 
 on:
   pull_request:
-    paths: ['lean-m2/tools/mathir_body.lean', 'lean-m2/g3/gen/**', 'lean-m2/g3/slice001/**', 'lean-m2/scripts/annotate.sh', '.github/workflows/lean-m2-mathir.yml']
+    paths: ['lean-m2/tools/mathir_body.lean', 'lean-m2/tools/test/**', 'build.sh', '.githooks/**', 'lean-m2/g3/gen/**', 'lean-m2/g3/slice001/**', 'lean-m2/scripts/annotate.sh', '.github/workflows/lean-m2-mathir.yml']
   push:
     branches: [main]
-    paths: ['lean-m2/tools/mathir_body.lean', 'lean-m2/g3/gen/**', 'lean-m2/g3/slice001/**', 'lean-m2/scripts/annotate.sh', '.github/workflows/lean-m2-mathir.yml']
+    paths: ['lean-m2/tools/mathir_body.lean', 'lean-m2/tools/test/**', 'build.sh', '.githooks/**', 'lean-m2/g3/gen/**', 'lean-m2/g3/slice001/**', 'lean-m2/scripts/annotate.sh', '.github/workflows/lean-m2-mathir.yml']
   workflow_dispatch:
   workflow_call:          # used by the release workflow (lean-m2-release.yml)
 
@@ -36,6 +36,14 @@ jobs:
           V=$(awk -F'"' '/^  lean_toolchain:/{print $2; exit}' lean-m2/corpus.lock.yaml)
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "$V"
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Local build check (build.sh, the same checks the pre-push hook runs)
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet pyyaml
+          set +e
+          LEAN="$(command -v lean)" ./build.sh > "$RUNNER_TEMP/build.log" 2>&1; rc=$?; set -e
+          cat "$RUNNER_TEMP/build.log"
+          lean-m2/scripts/annotate.sh "$([ $rc -eq 0 ] && echo notice || echo error)" "build.sh" "$RUNNER_TEMP/build.log" 80
+          exit $rc
       - name: Compile-check mathir_body.lean (empty module list)
         run: |
           { echo "import Lean"; cat lean-m2/tools/mathir_body.lean; } > "$RUNNER_TEMP/Check.lean"

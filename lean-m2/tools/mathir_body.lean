@@ -566,6 +566,7 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     let id ← fresh c
     let (lo, hi, incl, filt, _) ← source c id args[1]!
     return .fold "count" id lo hi incl filt (.lit 1)
+  if fn == `MathIR.tab && args.size == 1 then return .tab (← tr c args[0]!)
   -- strong recursion: f e reads the table of earlier values (e < current index, checked at runtime)
   if fn == c.self && c.strong && args.size == 1 then return .tab (← tr c args[0]!)
   -- recursive call
@@ -587,6 +588,15 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   -- call to another ℕ function: translated only if that function is translated (closure later)
   if fn != .anonymous then
     let ci ← getConstInfo fn
+    -- a helper that is not itself a candidate (e.g. it takes a function argument): unfold it
+    let isCand ← forallTelescope ci.type fun xs body => do
+      if !isNatTy body || xs.size != args.size || xs.isEmpty then return false
+      for x in xs do
+        unless isNatTy (← inferType x) do return false
+      return true
+    if !isCand && c.depth < 4 && ci.levelParams.isEmpty && !args.isEmpty then
+      if let some v := ci.value? then
+        if isNatTy (← inferType e) then return ← tr { c with depth := c.depth + 1 } (v.beta args)
     let isNatFn ← forallTelescope ci.type fun xs body => do
       if !isNatTy body then return false
       for x in xs do
@@ -1066,6 +1076,25 @@ def extract (n : Name) (arity : Nat) (kind : Kind := .nat) : MetaM (Except Strin
       match ← (if kind == .prop then trProp c body else if kind == .int then trI c body else trBool c body).run with
       | .ok e => return .ok (if kind == .int then .directInt arity e else .direct arity e)
       | .error r => return .error r
+  -- `def a : ℕ → ℕ := Nat.strongRec F`: table recursion; ih m h reads the table
+  if kind == .nat && arity == 1 then
+    let ci ← getConstInfo n
+    if let some v := ci.value? then
+      -- `Nat.strongRec F` or its eta-expansion `fun n => Nat.strongRec F n`
+      let v := v.consumeMData
+      let core := match v with
+        | .lam _ _ b _ => b.consumeMData
+        | _ => v
+      let (sf, sargs) := core.getAppFnArgs
+      let ok := sf == `Nat.strongRec && (sargs.size == 2 || (sargs.size == 3 && sargs[2]! == .bvar 0 && v.isLambda))
+      if ok && !sargs[1]!.hasLooseBVars then
+        let F := sargs[1]!
+        return ← withLocalDeclD `n (mkConst ``Nat) fun x => do
+          let ih : Expr := .lam `m (mkConst ``Nat) (.lam `h (mkConst ``True) (mkApp (mkConst `MathIR.tab) (.bvar 1)) .default) .default
+          let body ← Core.betaReduce (F.beta #[x, ih])
+          match ← (tr { self := n, args := #[x], idx? := some x, recArg := none, ctr, strong := true } body).run with
+          | .ok e => return .ok (.strong e)
+          | .error r => return .error r
   let eqns? ← try getEqnsFor? n catch _ => pure none
   let eqns := eqns?.getD #[]
   if eqns.isEmpty then
@@ -2626,12 +2655,20 @@ structure Budget where
   naiveCalls : Nat := 2000000   -- call-tree size of Lean's naive evaluation of lookback recursion
   steps   : Nat := 20000   -- the interpreter runs inside `#eval` (interpreted), so keep this modest
 
-abbrev IRM := StateT Nat (Except String)   -- state: steps used
+/-- Interpreter state: steps used; for strong recursion, the naive call-tree size of each table
+entry (Lean's compiled reference recomputes earlier values) and the running size of the entry
+being computed. -/
+structure IRS where
+  steps : Nat := 0
+  cost  : Array Nat := #[]
+  acc   : Nat := 0
+
+abbrev IRM := StateT IRS (Except String)
 
 def tick (b : Budget) : IRM Unit := do
   let s ← get
-  if s ≥ b.steps then throw "step budget"
-  set (s + 1)
+  if s.steps ≥ b.steps then throw "step budget"
+  set { s with steps := s.steps + 1 }
 
 def chk (b : Budget) (v : Nat) : IRM Nat :=
   if v.log2 ≥ b.maxBits then throw "size budget" else pure v
@@ -2757,6 +2794,7 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
   | .tab e => do
     let k ← evalE b defs args i w lv e
     if k ≥ i then throw "strong recursion: index not below the current one"
+    modify fun s => { s with acc := s.acc + s.cost.getD k 0 }
     pure ((w.getD k 0).toNat)
   | .lvar id => pure (lv.getD id 0)
   | .bin op x y => do
@@ -2969,10 +3007,18 @@ partial def evalDef (b : Budget) (defs : Std.HashMap Name FnDef) (d : FnDef) (vs
   | .recur .. => return (← evalRec b defs d vs).toNat
   | .strong body => do
     let n := vs.getD 0 0
+    let outer ← get
+    set { outer with cost := #[], acc := 0 }
     let mut w : Array Int := #[]
     for m in [0:n + 1] do
       tick b
-      w := w.push (Int.ofNat (← evalE b defs vs m w {} body))
+      modify fun s => { s with acc := 1 }
+      let v ← evalE b defs vs m w {} body
+      let s ← get
+      if s.acc > b.naiveCalls then throw "naive-recursion budget"
+      set { s with cost := s.cost.push s.acc }
+      w := w.push (Int.ofNat v)
+    modify fun s => { s with cost := outer.cost, acc := outer.acc }
     return (w.getD n 0).toNat
   | .directInt .. | .recurInt .. => throw "ℤ-valued function called as ℕ"
 
@@ -3002,13 +3048,13 @@ end
 def runIR (defs : Std.HashMap Name FnDef) (n : Name) (xs : List Nat) : Option Int :=
   match defs.get? n with
   | none => none
-  | some (.directInt _ e) => match (evalI {} defs xs.toArray 0 #[] {} e).run 0 with
+  | some (.directInt _ e) => match (evalI {} defs xs.toArray 0 #[] {} e).run {} with
     | .ok (v, _) => some v
     | .error _ => none
-  | some d@(.recurInt ..) => match (evalRec {} defs d xs.toArray).run 0 with
+  | some d@(.recurInt ..) => match (evalRec {} defs d xs.toArray).run {} with
     | .ok (v, _) => some v
     | .error _ => none
-  | some d => match (evalDef {} defs d xs.toArray).run 0 with
+  | some d => match (evalDef {} defs d xs.toArray).run {} with
     | .ok (v, _) => some (Int.ofNat v)
     | .error _ => none
 

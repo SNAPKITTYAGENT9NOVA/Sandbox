@@ -92,3 +92,26 @@ def stern (n : Nat) : Nat :=
 termination_by n
 decreasing_by all_goals omega
 end T
+/-- Mathlib's `Nat.strongRec` (absent from Lean core) -/
+def Nat.strongRec {motive : Nat → Sort _} (ind : ∀ n, (∀ m, m < n → motive m) → motive n) : ∀ n, motive n
+  | n => ind n fun m _ => Nat.strongRec ind m
+decreasing_by assumption
+namespace T
+def conv2 (b : Nat → Nat) (n : Nat) : Nat := (List.range (n + 1)).foldl (fun acc k => acc + b k * b (n - k)) 0
+/-- Catalan numbers through Nat.strongRec and a higher-order helper -/
+def catalan : Nat → Nat :=
+  Nat.strongRec fun n ih =>
+    if n = 0 then 1
+    else
+      let b : Nat → Nat := fun m => if h : m < n then ih m h else 0
+      conv2 b (n - 1)
+end T
+namespace T
+/-- eta-expanded form of the same definition -/
+def catalan' (n : Nat) : Nat :=
+  Nat.strongRec (fun n ih =>
+    if n = 0 then 1
+    else
+      let b : Nat → Nat := fun m => if h : m < n then ih m h else 0
+      conv2 b (n - 1)) n
+end T

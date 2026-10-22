@@ -1,4 +1,4 @@
-MATHIR candidates=24 translated=21 blocked=3 cases=4299 ok=3570 overflow=729 skipped_over_budget=90 ir_fidelity_mismatches=0
+MATHIR candidates=25 translated=22 blocked=3 cases=4371 ok=3634 overflow=737 skipped_over_budget=90 ir_fidelity_mismatches=0
 translated:
   T.AllSmallOdd (1-ary, prop)
   T.AllSmallOdd2 (1-ary, prop)
@@ -14,6 +14,7 @@ translated:
   T.lastDigit (1-ary)
   T.ones (1-ary)
   T.sq (1-ary)
+  T.stern (1-ary, strong)
   T.zalt (1-ary, int, rec K=1)
   T.zdiff (2-ary, int)
   T.zdivmod (2-ary, int)

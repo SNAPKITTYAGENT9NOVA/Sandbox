@@ -257,6 +257,7 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if (fn == ``Prod.fst || fn == ``Prod.snd) && args.size == 3 then
     let (g, ga) := args[2]!.consumeMData.getAppFnArgs
     if g == ``Prod.mk && ga.size == 4 then return ← tr c (if fn == ``Prod.fst then ga[2]! else ga[3]!)
+  if fn == `Nat.padicValNatMarker && args.size == 2 then return .prim "padic" [← tr c args[0]!, ← tr c args[1]!]
   -- MathIR v8 list-element markers (see `pfElem`, `digElem`)
   if fn == `MathIR.pfnth && args.size == 2 then return .prim "pfnth" [← tr c args[0]!, ← tr c args[1]!]
   if fn == `MathIR.digat && args.size == 3 then
@@ -307,6 +308,12 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     return .fold "count" id (.lit 0) n false (.cmp "eq" (.prim "gcd" [n, .lvar id]) (.lit 1)) (.lit 1)
   -- arithmetic functions applied through `DFunLike.coe`: σ k, ω, Ω
   if fn == `DFunLike.coe && args.size == 6 then
+    -- n.factorization p = v_p(n) for p prime, else 0
+    let (g0, ga0) := args[4]!.consumeMData.getAppFnArgs
+    if g0 == `Nat.factorization && ga0.size == 1 then
+      let n ← tr c ga0[0]!
+      let x ← tr c args[5]!
+      return .ite (.prim "prime" [x]) (.prim "padic" [x, n]) (.lit 0)
     let F := args[0]!.consumeMData
     unless F.getAppFn.isConstOf `ArithmeticFunction && F.getAppNumArgs == 2 && isNatTy F.getAppArgs[0]! do
       bail s!"unsupported: DFunLike.coe"
@@ -498,6 +505,17 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     let n ← tr c args[0]!
     let id ← fresh c
     return .fold "count" id (.lit 0) n (fn == `Nat.primeCounting) (.prim "prime" [.lvar id]) (.lit 1)
+  -- n.factorization.prod g = ∏ p ∈ primeFactors n, g p (v_p n)
+  if fn == `Finsupp.prod && args.size == 7 && isNatTy args[2]! then
+    let (g0, ga0) := args[5]!.consumeMData.getAppFnArgs
+    unless g0 == `Nat.factorization && ga0.size == 1 do bail "unsupported: Finsupp.prod"
+    let n ← tr c ga0[0]!
+    let id ← fresh c
+    let body ← withLocalDeclD `p (mkConst ``Nat) fun p => do
+      let c' := { c with loops := c.loops.push (p, id) }
+      let e := (args[6]!.beta #[p, mkApp2 (mkConst `Nat.padicValNatMarker) p ga0[0]!])
+      tr c' e
+    return .fold "prod" id (.lit 1) n true (.and (.prim "dvd" [.lvar id, n]) (.prim "prime" [.lvar id])) body
   -- Finset.gcd f over a ℕ source (gcd ∅ = 0): an accumulator loop
   if fn == `Finset.gcd && args.size == 6 then
     unless isNatTy args[0]! && isNatTy args[1]! do bail "Finset.gcd over a non-ℕ type"
@@ -614,6 +632,11 @@ partial def trProp (c : Ctx) (p : Expr) : TrM E := do
     let sq := E.bin "mul" (.lvar id) (.lvar id)
     return .and (.not (.cmp "eq" nv (.lit 0)))
       (.cmp "eq" (.fold "count" id (.lit 2) (.prim "sqrt" [nv]) true (.prim "dvd" [sq, nv]) (.lit 1)) (.lit 0))
+  | `Finset.Nonempty, #[ty, s] =>
+    unless isNatTy ty do bail "Finset.Nonempty over a non-ℕ type"
+    let id ← fresh c
+    let (lo, hi, incl, filt, _) ← source c id s
+    return .not (.cmp "eq" (.fold "count" id lo hi incl filt (.lit 1)) (.lit 0))
   -- IsPrimePow n on ℕ: n ≥ 2 and n = p ^ v_p(n) for p = minFac n
   | `IsPrimePow, #[ty, _, n] =>
     unless isNatTy ty do bail "IsPrimePow at a non-ℕ type"
@@ -883,6 +906,11 @@ partial def source (c : Ctx) (id : Nat) (s : Expr) : TrM (E × E × Bool × E ×
     if fn == `Nat.divisors then return (.lit 1, n, true, dv, idElem)
     if fn == `Nat.properDivisors then return (.lit 1, n, false, dv, idElem)
     return (.lit 1, n, true, .and dv (.prim "prime" [.lvar id]), idElem)
+  if fn == `Finsupp.support && args.size == 4 then
+    let (g0, ga0) := args[3]!.consumeMData.getAppFnArgs
+    if g0 == `Nat.factorization && ga0.size == 1 then
+      let n ← tr c ga0[0]!
+      return (.lit 1, n, true, .and (.prim "dvd" [.lvar id, n]) (.prim "prime" [.lvar id]), idElem)
   if fn == `Nat.primesBelow && args.size == 1 then
     return (.lit 0, ← tr c args[0]!, false, .prim "prime" [.lvar id], idElem)
   -- image f s (ℕ → ℕ): enumerate s, map by f, keep an element only at its first occurrence

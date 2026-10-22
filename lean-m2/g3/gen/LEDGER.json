@@ -1,12 +1,12 @@
 {
   "contract": "LEAN-M2-CC-001",
-  "component": "MathIR v16 generator (v15 + ℤ division and remainder, calls between ℤ-valued functions)",
-  "ci_run": 39739595979,
+  "component": "MathIR v17 generator (v16 + unary strong recursion via a table of earlier values)",
+  "ci_run": 39747348855,
   "supersedes": {
-    "component": "MathIR v15",
-    "ci_run": 39730857100,
-    "translated": 260,
-    "reference_cases": 26541
+    "component": "MathIR v16",
+    "ci_run": 39739595979,
+    "translated": 264,
+    "reference_cases": 26699
   },
   "corpus_commit": "84cf7f8adfb0ea8d14c7d00bdf145cc9032bdf88",
   "lean": "4.33.1 (819816b2e0a3bf405af45ae5c7af2491d8f5bee6)",
@@ -19,8 +19,8 @@
   "coverage": {
     "candidates": 446,
     "candidate_definition": "computable, safe, non-auxiliary def f : ℕ^k → ℕ (k ≤ 3) in corpus modules, no implemented_by/extern",
-    "translated": 264,
-    "blocked": 182,
+    "translated": 266,
+    "blocked": 180,
     "blocked_reasons": {
       "∃ over a non-ℕ type": 28,
       "unbounded ∃": 24,
@@ -33,28 +33,28 @@
       "unsupported Finset source": 5,
       "calls untranslated function": 4,
       "unsupported (ℚ): WellFounded.Nat.fix": 4,
-      "recursion in a non-recursive equation": 3,
       "unsupported (ℤ): Matrix.det": 3,
       "unbounded ∀": 3,
       "Finset.image over a non-ℕ type": 2,
-      "dependent if-then-else": 2,
       "Finset.sum over a non-ℕ type": 2,
+      "dependent if-then-else": 2,
       "equality at a non-ℕ type": 2,
-      "unsupported (ℤ): DFunLike.coe": 1,
+      "unsupported (ℚ): Matrix.det": 1,
+      "unsupported (ℤ): Zsqrtd.re": 1,
       "body arity differs from type arity": 1,
       "unsupported (ℤ): LinearRecurrence.mkSol": 1,
-      "partial application in equation": 1,
+      "unsupported (ℤ): DFunLike.coe": 1,
       "unsupported (ℤ): Zsqrtd.im": 1,
       "no Lean reference: Lean's compiler generates no code for decide (P xs) (noncomputable constants in it: [Green72.AllowedSetSize])": 1,
       "equations recurse on different arguments": 1,
       "unsupported (ℤ): Prod.fst": 1,
       "recursive call on a non-offset argument": 1,
-      "unsupported (ℤ): Zsqrtd.re": 1,
-      "unsupported list: List.flatMap": 1,
+      "partial application in equation": 1,
+      "recursion in a non-recursive equation": 1,
       "unsupported (ℤ): Int.xor": 1,
       "≠ at a non-ℕ type": 1,
       "unsupported (ℤ): jacobiSym": 1,
-      "unsupported (ℚ): Matrix.det": 1,
+      "unsupported list: List.flatMap": 1,
       "∣ at a non-ℕ type": 1,
       "∀ whose body uses the bound proof": 1,
       "unsupported (Bool): Rule30.state": 1
@@ -83,10 +83,8 @@
     }
   },
   "newly_translated": [
-    "OeisA100434.b",
-    "OeisA100434.e",
-    "OeisA100434.f",
-    "OeisA100434.g"
+    "OeisA109671.a",
+    "OeisA112970.a"
   ],
   "translated_functions": [
     {
@@ -551,6 +549,11 @@
       "result": "nat"
     },
     {
+      "name": "OeisA109671.a",
+      "arity": 1,
+      "result": "nat"
+    },
+    {
       "name": "OeisA109845.a",
       "arity": 1,
       "result": "nat",
@@ -583,6 +586,11 @@
     },
     {
       "name": "OeisA112521.a",
+      "arity": 1,
+      "result": "nat"
+    },
+    {
+      "name": "OeisA112970.a",
       "arity": 1,
       "result": "nat"
     },
@@ -1560,9 +1568,7 @@
     "Nat.iteratedLog": "recursive call on a non-offset argument",
     "OeisA101779.Ak": "unbounded quantifier",
     "OeisA109074.b": "unsupported: OeisA109074.countVsasmRows",
-    "OeisA109671.a": "recursion in a non-recursive equation",
     "OeisA112521.T": "recursion in a non-recursive equation",
-    "OeisA112970.a": "recursion in a non-recursive equation",
     "OeisA166944.IsDifferenceRecord": "unbounded quantifier",
     "OeisA17666.a": "Finset.sum over a non-ℕ type",
     "OeisA181391.a": "unsupported: OeisA181391.State.current",
@@ -1645,10 +1651,10 @@
       "check": "budgeted IR interpreter == Lean's compiled corpus definition, on every evaluated input",
       "mismatches": 0
     },
-    "reference_cases": 26699,
-    "reference_ok": 22959,
-    "reference_overflow": 3740,
-    "skipped_over_budget": 6195,
+    "reference_cases": 26838,
+    "reference_ok": 23148,
+    "reference_overflow": 3690,
+    "skipped_over_budget": 6200,
     "differential": {
       "c_compcert": {
         "unsound": 0,
@@ -1667,13 +1673,13 @@
       "result": "PASS"
     },
     "objects_sha256": {
-      "lm2_gen.o": "96c5f41d3727fcf91f7806e1bb4a4ace52746fd310d188554799af7908868ac3",
-      "lm2_gen_cases.o": "904ebfd09debaf3a1945cf7bbc13502a14256333ba5c36c74626571f71503d3b",
+      "lm2_gen.o": "40463878088377a31bcb0d4a64404bc5c408a4efbec6fbed88264382d07c6ea8",
+      "lm2_gen_cases.o": "ad649ee743645c712a4ad0354d38060b0c7d00ad4897ad0bbe62ac64901a8f48",
       "LM2Nat.o": "3dcfd74d8d8a61b80fb15bf0f8fac590ccb36ddf68d884ebafbc9a5b585b6cdb",
       "LM2Wide.o": "f881cb719bdf264e0ca3356298a8a7f6dd9fdc5b85d3f6d83c6474e156d80f8c",
-      "LM2Gen.o": "d7f7e2ffaf5947ce80b608679ad7fe81ea95ebfa12f8923b99f56d044e66fcd2",
-      "gen-test": "7fb1b643e7eaa12b1f7b4c41777a16530e558b620ebe01646a2a88baca7b9f97",
-      "acceptance-test": "26cf7e49c88257ea61b580af82f0f14a597d65cef3c51ef1d27fded765ee1a0f"
+      "LM2Gen.o": "c94862597f2e840c74e3b1978feb2c81795e612a5a5eac8bf30ab226e2c1168a",
+      "gen-test": "90bd29adb4a01eed40cd1df3d655802edddc14e88f568a35eeb659c1cf2397be",
+      "acceptance-test": "7240f9ce7457ac93f4e4961b5ffd77ad201b40f3205177f3b6401370ddc98a94"
     },
     "int64_runtime_local_check": "lm2_iadd/isub/imul/ineg/ipow vs exact integers (Python), 60,000 cases incl. ±2^63 edges: 0 mismatches (gcc; CompCert build is the CI one above)",
     "wide_fallback": {
@@ -1698,7 +1704,7 @@
     "Incomplete = OVERFLOW where Lean's value fits in 64 bits. With the wide fallback this is 0 on every tested case; it remains possible in principle when an intermediate exceeds 4224 bits, when a loop bound exceeds 64 bits, or when minFac / primality / Ω gets an argument above 64 bits (the reference budget keeps tested inputs inside these limits).",
     "ℤ subterms run in 64-bit signed arithmetic on the fast path; on overflow the wide fallback recomputes them exactly (sign-magnitude, 4224-bit).",
     "ℚ subterms are evaluated only on the exact path (normalized fractions in the 4224-bit runtime); a numerator or denominator beyond capacity is reported as overflow.",
-    "6,195 inputs skipped and untested: IR evaluation exceeded the budget (intermediates ≥ 2^4096, 20,000 interpreter steps, choose n > 24, primality/minFac/Ω above 2^20, fib n > 6000, base-1 digits above 2^16, or a naive-recursion call tree above 2,000,000 calls).",
+    "6,200 inputs skipped and untested: IR evaluation exceeded the budget (intermediates ≥ 2^4096, 20,000 interpreter steps, choose n > 24, primality/minFac/Ω above 2^20, fib n > 6000, base-1 digits above 2^16, or a naive-recursion call tree above 2,000,000 calls).",
     "Inputs where a power has exponent > 2^32-1 are skipped: Lean 4.33.1's runtime Nat.pow (lean_nat_pow) panics and exits the process there, so the compiled corpus definition has no reference value (e.g. OeisA113258.a(16) contains 1^(16!)).",
     "Lookback recursion is compiled by Lean as naive recursion; inputs whose naive call tree exceeds the budget are skipped, although the generated C/Modula-2 (iterative window) would compute them.",
     "Testing covers finite input sets; no formal proof that generated code equals the Lean definitions."

@@ -50,6 +50,7 @@ inductive E where
   | arg  (i : Nat)                       -- i-th function argument
   | idx                                  -- recursion counter m (step only)
   | prev (j : Nat)                       -- f … (m + j) …  (step only, j < K)
+  | tab  (i : E)                         -- f i for i < m (strong recursion, table of earlier values)
   | lvar (id : Nat)                      -- loop variable
   | bin  (op : String) (a b : E)         -- add mul sub div mod pow | ℤ: iadd isub imul ipow (exponent ℕ)
   | prim (op : String) (args : List E)   -- min max gcd lcm fact choose sqrt minfac fib log log2 padic
@@ -79,6 +80,7 @@ partial def E.json : E → Json
   | .arg i => Json.mkObj [("arg", Lean.toJson i)]
   | .idx => Json.mkObj [("idx", Lean.toJson true)]
   | .prev j => Json.mkObj [("prev", Lean.toJson j)]
+  | .tab i => Json.mkObj [("tab", i.json)]
   | .lvar i => Json.mkObj [("lvar", Lean.toJson i)]
   | .bin op a b => Json.mkObj [("op", Lean.toJson op), ("a", a.json), ("b", b.json)]
   | .prim op as => Json.mkObj [("prim", Lean.toJson op), ("args", Lean.toJson (as.map E.json))]
@@ -95,7 +97,7 @@ partial def E.json : E → Json
 
 partial def E.children : E → List E
   | .bin _ a b | .cmp _ a b | .and a b | .or a b => [a, b]
-  | .not a => [a]
+  | .not a | .tab a => [a]
   | .prim _ as | .call _ as => as
   | .ite c t e => [c, t, e]
   | .fold _ _ lo hi _ f b => [lo, hi, f, b]
@@ -115,6 +117,7 @@ partial def E.substVar (e : E) (v : Nat) (r : E) : E :=
   | .and a b => .and (a.substVar v r) (b.substVar v r)
   | .or a b => .or (a.substVar v r) (b.substVar v r)
   | .not a => .not (a.substVar v r)
+  | .tab a => .tab (a.substVar v r)
   | .ite c t e => .ite (c.substVar v r) (t.substVar v r) (e.substVar v r)
   | .fold op id lo hi incl f b => .fold op id (lo.substVar v r) (hi.substVar v r) incl (f.substVar v r) (b.substVar v r)
   | .call fn as => .call fn (as.map (·.substVar v r))
@@ -137,19 +140,21 @@ inductive FnDef where
   | direct (arity : Nat) (body : E)                                    -- non-recursive
   | directInt (arity : Nat) (body : E)                                 -- non-recursive, ℤ-valued (v10)
   | recurInt  (arity : Nat) (recArg : Nat) (bases : List E) (step : E) -- lookback recursion, ℤ-valued (v11)
+  | strong    (body : E)                                               -- unary strong recursion f n from f i, i < n (v17)
   | recur  (arity : Nat) (recArg : Nat) (bases : List E) (step : E)    -- K = bases.length ≥ 1 (`rec` is the auto-generated recursor)
 
 instance : Inhabited FnDef := ⟨.direct 0 default⟩
 
 def FnDef.arity : FnDef → Nat
   | .direct a _ | .directInt a _ | .recur a _ _ _ | .recurInt a _ _ _ => a
+  | .strong _ => 1
 
 def FnDef.exprs : FnDef → List E
-  | .direct _ b | .directInt _ b => [b]
+  | .direct _ b | .directInt _ b | .strong b => [b]
   | .recur _ _ bs s | .recurInt _ _ bs s => bs ++ [s]
 
 def FnDef.calls (d : FnDef) : List Name := d.exprs.flatMap E.calls
-def FnDef.heavy (d : FnDef) : Bool := (match d with | .recur .. | .recurInt .. => true | _ => false) || d.exprs.any E.heavy
+def FnDef.heavy (d : FnDef) : Bool := (match d with | .recur .. | .recurInt .. | .strong .. => true | _ => false) || d.exprs.any E.heavy
 def FnDef.isInt : FnDef → Bool
   | .directInt .. | .recurInt .. => true
   | _ => false
@@ -207,6 +212,7 @@ structure Ctx where
   loops  : Array (Expr × Nat) := #[]   -- loop-variable fvars and their ids
   ctr    : IO.Ref Nat             -- fresh loop ids
   depth  : Nat := 0               -- inlining depth of ℤ-valued helpers
+  strong : Bool := false          -- unary strong recursion: self-calls read the table
 
 abbrev TrM := ExceptT String MetaM
 
@@ -560,6 +566,8 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
     let id ← fresh c
     let (lo, hi, incl, filt, _) ← source c id args[1]!
     return .fold "count" id lo hi incl filt (.lit 1)
+  -- strong recursion: f e reads the table of earlier values (e < current index, checked at runtime)
+  if fn == c.self && c.strong && args.size == 1 then return .tab (← tr c args[0]!)
   -- recursive call
   if fn == c.self then
     let some j := c.recArg | bail "recursion in a non-recursive equation"
@@ -1103,7 +1111,13 @@ def extract (n : Name) (arity : Nat) (kind : Kind := .nat) : MetaM (Except Strin
     let (rhs, largs) := directs[0]!
     return ← match ← (trR { self := n, args := largs, idx? := none, recArg := none, ctr } rhs).run with
       | .ok e => pure (.ok (mkDirect e))
-      | .error r => pure (.error r)
+      | .error r =>
+        -- a unary ℕ function calling itself at smaller arguments (well-founded recursion)
+        if r == "recursion in a non-recursive equation" && arity == 1 && kind == .nat && largs[0]!.isFVar then
+          match ← (tr { self := n, args := largs, idx? := some largs[0]!, recArg := none, ctr, strong := true } rhs).run with
+          | .ok e => pure (.ok (.strong e))
+          | .error r2 => pure (.error r2)
+        else pure (.error r)
   let some j := pos? | return .error "unreachable"
   unless directs.isEmpty do return .error "mixed pattern / non-pattern equations"
   unless steps.size == 1 do return .error s!"{steps.size} step equations (need exactly one)"
@@ -1169,6 +1183,12 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
   | .lit n => pure s!"{n}ULL"
   | .arg i => pure s!"a{i}"
   | .idx => pure "i"
+  | .tab e => do
+    let x ← cExpr sym ind e
+    let t ← freshC
+    emitC s!"{ind}if ({x} >= i) return LM2_OVERFLOW;"
+    emitC s!"{ind}uint64_t {t} = tab[{x}];"
+    return t
   | .prev j => pure s!"w{j}"
   | .lvar id => pure s!"v{id}"
   | .bin op a b => do
@@ -1416,6 +1436,15 @@ def cFunction (sym : Name → String) (n : Name) (d : FnDef) : String :=
       emitC s!"    if (i == a{j} - {K}ULL) break;"
       emitC "  }"
       emitC s!"  *out = w{K - 1};"
+    | .strong body =>
+      emitC "  uint64_t i, tab[4096];"
+      emitC "  if (a0 >= 4096ULL) return LM2_OVERFLOW;"
+      emitC "  for (i = 0ULL; ; i++) {"
+      let r ← cExpr sym "    " body
+      emitC s!"    tab[i] = {r};"
+      emitC "    if (i == a0) break;"
+      emitC "  }"
+      emitC "  *out = tab[a0];"
     | .recurInt _ j bases step =>
       let K := bases.length
       emitC s!"  uint64_t i;"
@@ -1457,6 +1486,13 @@ partial def cExprW (sym : Name → String) (ind : String) : E → CGM String
   | .idx => do
     let t ← freshC
     emitC s!"{ind}lm2w {t}; lm2w_set(&{t}, i);"
+    return t
+  | .tab e => do
+    let x ← cExprW sym ind e
+    let k ← freshC
+    emitC s!"{ind}uint64_t {k}; if (lm2w_get(&{x}, &{k}) || {k} >= i) return LM2_OVERFLOW;"
+    let t ← freshC
+    emitC s!"{ind}lm2w {t} = tab[{k}];"
     return t
   | .prev j => pure s!"w{j}"
   | .lvar id => do
@@ -1784,6 +1820,15 @@ def cFunctionW (sym : Name → String) (n : Name) (d : FnDef) : String :=
       emitC s!"    if (i == nrec - {K}ULL) break;"
       emitC "  }"
       emitC s!"  *out = w{K - 1};"
+    | .strong body =>
+      emitC "  uint64_t i, nrec; lm2w tab[256];"
+      emitC "  if (lm2w_get(a0, &nrec) || nrec >= 256ULL) return LM2_OVERFLOW;"
+      emitC "  for (i = 0ULL; ; i++) {"
+      let r ← cExprW sym "    " body
+      emitC s!"    tab[i] = {r};"
+      emitC "    if (i == nrec) break;"
+      emitC "  }"
+      emitC "  *out = tab[nrec];"
     | .recurInt _ j bases step =>
       let K := bases.length
       emitC "  uint64_t i, nrec;"
@@ -1862,6 +1907,12 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
   | .lit n => pure (toString n)
   | .arg i => pure s!"a{i}"
   | .idx => pure "i"
+  | .tab e => do
+    let x ← mExpr sym ind e
+    let t ← freshM
+    emitM s!"{ind}IF {x} >= i THEN RETURN Overflow END;"
+    emitM s!"{ind}{t} := tab[{x}];"
+    return t
   | .prev j => pure s!"w{j}"
   | .lvar id => do declM s!"v{id}"; pure s!"v{id}"
   | .bin op a b => do
@@ -2101,6 +2152,17 @@ def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
       emitM "    INC(i)"
       emitM "  END;"
       emitM s!"  out := w{K - 1};"
+    | .strong body =>
+      declM "i"
+      emitM "  IF a0 >= 4096 THEN RETURN Overflow END;"
+      emitM "  i := 0;"
+      emitM "  LOOP"
+      let r ← mExpr sym "    " body
+      emitM s!"    tab[i] := {r};"
+      emitM "    IF i = a0 THEN EXIT END;"
+      emitM "    INC(i)"
+      emitM "  END;"
+      emitM "  out := tab[a0];"
     | .recurInt _ j bases step =>
       let K := bases.length
       declM "i"; declMI "nv"
@@ -2123,7 +2185,10 @@ def mProcedure (sym : Name → String) (n : Name) (d : FnDef) : String :=
       emitM s!"  out := LM2Nat.IntBits(w{K - 1});"
     emitM "  RETURN Ok"
   let st := (body.run {}).2
-  s!"(* Lean: {n} (fast path: checked LONGCARD) *)\nPROCEDURE {sym n}Fast ({mParams d.arity}) : INTEGER;\n{mVarDecl st}BEGIN\n" ++
+  let vd := match d with
+    | .strong _ => (if mVarDecl st == "" then "VAR\n" else mVarDecl st) ++ "  tab: ARRAY [0..4095] OF LONGCARD;\n"
+    | _ => mVarDecl st
+  s!"(* Lean: {n} (fast path: checked LONGCARD) *)\nPROCEDURE {sym n}Fast ({mParams d.arity}) : INTEGER;\n{vd}BEGIN\n" ++
     "\n".intercalate st.lines.toList ++ s!"\nEND {sym n}Fast;\n"
 
 /-! ## Modula-2 wide fallback (exact multi-precision, LM2Wide) -/
@@ -2147,6 +2212,14 @@ partial def mExprW (sym : Name → String) (ind : String) : E → MGM String
   | .idx => do
     let t ← freshMW
     emitM s!"{ind}LM2Wide.Set({t}, i);"
+    return t
+  | .tab e => do
+    let x ← mExprW sym ind e
+    let k ← freshM
+    emitM s!"{ind}IF LM2Wide.Get({x}, {k}) THEN RETURN Overflow END;"
+    emitM s!"{ind}IF {k} >= i THEN RETURN Overflow END;"
+    let t ← freshMW
+    emitM s!"{ind}{t} := tab[{k}];"
     return t
   | .prev j => do declMW s!"w{j}"; pure s!"w{j}"
   | .lvar id => do
@@ -2466,6 +2539,18 @@ def mProcedureW (sym : Name → String) (n : Name) (d : FnDef) : String :=
       emitM "    INC(i)"
       emitM "  END;"
       emitM s!"  out := w{K - 1};"
+    | .strong body =>
+      declM "i"; declM "nrec"
+      emitM "  IF LM2Wide.Get(a0, nrec) THEN RETURN Overflow END;"
+      emitM "  IF nrec >= 256 THEN RETURN Overflow END;"
+      emitM "  i := 0;"
+      emitM "  LOOP"
+      let r ← mExprW sym "    " body
+      emitM s!"    tab[i] := {r};"
+      emitM "    IF i = nrec THEN EXIT END;"
+      emitM "    INC(i)"
+      emitM "  END;"
+      emitM "  out := tab[nrec];"
     | .recurInt _ j bases step =>
       let K := bases.length
       declM "i"; declM "nrec"; declMWI "nv"
@@ -2492,7 +2577,10 @@ def mProcedureW (sym : Name → String) (n : Name) (d : FnDef) : String :=
   let params := match d with
     | .directInt .. | .recurInt .. => s!"VAR {", ".intercalate ((List.range d.arity).map (s!"a{·}"))}: LM2Wide.Wide; VAR out: LM2Wide.WInt"
     | _ => mParamsW d.arity
-  s!"(* Lean: {n} (wide fallback: exact, LM2Wide) *)\nPROCEDURE {sym n}W ({params}) : INTEGER;\n{mVarDecl st}BEGIN\n" ++
+  let vd := match d with
+    | .strong _ => (if mVarDecl st == "" then "VAR\n" else mVarDecl st) ++ "  tab: ARRAY [0..255] OF LM2Wide.Wide;\n"
+    | _ => mVarDecl st
+  s!"(* Lean: {n} (wide fallback: exact, LM2Wide) *)\nPROCEDURE {sym n}W ({params}) : INTEGER;\n{vd}BEGIN\n" ++
     "\n".intercalate st.lines.toList ++ s!"\nEND {sym n}W;\n"
 
 /-- Public entry: fast path; on overflow, exact recomputation; the result is returned iff it fits. -/
@@ -2666,6 +2754,10 @@ partial def evalE (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
   | .arg k => pure (args.getD k 0)
   | .idx => pure i
   | .prev j => pure ((w.getD j 0).toNat)
+  | .tab e => do
+    let k ← evalE b defs args i w lv e
+    if k ≥ i then throw "strong recursion: index not below the current one"
+    pure ((w.getD k 0).toNat)
   | .lvar id => pure (lv.getD id 0)
   | .bin op x y => do
     let a ← evalE b defs args i w lv x
@@ -2875,6 +2967,13 @@ partial def evalDef (b : Budget) (defs : Std.HashMap Name FnDef) (d : FnDef) (vs
   match d with
   | .direct _ e => evalE b defs vs 0 #[] {} e
   | .recur .. => return (← evalRec b defs d vs).toNat
+  | .strong body => do
+    let n := vs.getD 0 0
+    let mut w : Array Int := #[]
+    for m in [0:n + 1] do
+      tick b
+      w := w.push (Int.ofNat (← evalE b defs vs m w {} body))
+    return (w.getD n 0).toNat
   | .directInt .. | .recurInt .. => throw "ℤ-valued function called as ℕ"
 
 /-- A lookback recursion (ℕ- or ℤ-valued); the window holds the last K values. -/
@@ -3174,6 +3273,7 @@ set_option maxHeartbeats 0 in
         match d with
         | .direct _ e => [("kind", toJson "direct"), ("body", e.json)]
         | .directInt _ e => [("kind", toJson "direct"), ("result", toJson "int"), ("body", e.json)]
+        | .strong e => [("kind", toJson "strong"), ("body", e.json)]
         | .recurInt _ j bs s => [("kind", toJson "rec"), ("result", toJson "int"), ("rec_arg", toJson j),
             ("lookback", toJson bs.length), ("bases", toJson (bs.map E.json)), ("step", s.json)]
         | .recur _ j bs s => [("kind", toJson "rec"), ("rec_arg", toJson j), ("lookback", toJson bs.length),
@@ -3201,6 +3301,7 @@ set_option maxHeartbeats 0 in
     | .direct .. => (match kinds.getD n .nat with | .prop => ", prop" | .bool => ", bool" | _ => "")
     | .directInt .. => ", int"
     | .recurInt _ _ bs _ => s!", int, rec K={bs.length}"
+    | .strong _ => ", strong"
     | .recur _ _ bs _ => s!", rec K={bs.length}"
   let summary := s!"MATHIR candidates={cands.size} translated={order.size} blocked={blocked.size} cases={ncases} ok={nok} overflow={ncases - nok} skipped_over_budget={skipped} ir_fidelity_mismatches=0"
   let report := summary ++ "\ntranslated:\n" ++

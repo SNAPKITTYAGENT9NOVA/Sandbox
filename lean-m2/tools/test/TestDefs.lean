@@ -82,3 +82,13 @@ end T
 namespace T
 def zcall (n : Nat) : Int := if n % 2 = 0 then zfib (n + 1) / 2 else -(zalt (n - 1))
 end T
+namespace T
+/-- strong recursion (well-founded on n): calls at n / 2 and n - 2 -/
+def stern (n : Nat) : Nat :=
+  if n = 0 then 0
+  else if n = 1 then 1
+  else if n % 2 = 0 then stern (n / 2)
+  else stern (n / 2) + stern (n / 2 + 1)
+termination_by n
+decreasing_by all_goals omega
+end T

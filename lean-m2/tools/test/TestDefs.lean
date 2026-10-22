@@ -76,3 +76,6 @@ namespace T
 abbrev base : Nat := 10
 def lastDigit (n : Nat) : Nat := n % base
 end T
+namespace T
+def zdivmod (a b : Nat) : Int := ((a : Int) - 100) / ((b : Int) - 7) * 1000 + ((a : Int) - 100) % ((b : Int) - 7)
+end T

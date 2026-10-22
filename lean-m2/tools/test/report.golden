@@ -1,4 +1,4 @@
-MATHIR candidates=22 translated=19 blocked=3 cases=3783 ok=3115 overflow=668 skipped_over_budget=65 ir_fidelity_mismatches=0
+MATHIR candidates=23 translated=20 blocked=3 cases=4252 ok=3545 overflow=707 skipped_over_budget=65 ir_fidelity_mismatches=0
 translated:
   T.AllSmallOdd (1-ary, prop)
   T.AllSmallOdd2 (1-ary, prop)
@@ -16,6 +16,7 @@ translated:
   T.sq (1-ary)
   T.zalt (1-ary, int, rec K=1)
   T.zdiff (2-ary, int)
+  T.zdivmod (2-ary, int)
   T.zfib (1-ary, int, rec K=2)
   T.zneg (1-ary, int)
   T.zpoly (1-ary, int)

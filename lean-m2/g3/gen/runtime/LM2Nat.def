@@ -43,6 +43,8 @@ PROCEDURE INeg (a: LONGINT; VAR r: LONGINT) : BOOLEAN;
 PROCEDURE IAdd (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;
 PROCEDURE ISub (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;
 PROCEDURE IMul (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE IDiv (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;      (* Int.ediv *)
+PROCEDURE IMod (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;      (* Int.emod *)
 PROCEDURE IPow (a: LONGINT; e: LONGCARD; VAR r: LONGINT) : BOOLEAN;
 (* MathIR v5 *)
 PROCEDURE Xor (a, b: LONGCARD) : LONGCARD;                      (* bitwise exclusive or *)

@@ -849,6 +849,11 @@ partial def trI (c : Ctx) (e : Expr) : TrM E := do
   if (fn == ``Int.add || fn == ``Int.sub || fn == ``Int.mul) && args.size == 2 then
     let op := if fn == ``Int.add then "iadd" else if fn == ``Int.sub then "isub" else "imul"
     return .bin op (← trI c args[0]!) (← trI c args[1]!)
+  if (fn == ``HDiv.hDiv || fn == ``HMod.hMod) && args.size == 6 &&
+      isIntTy args[0]! && isIntTy args[1]! && isIntTy args[2]! then
+    return .bin (if fn == ``HDiv.hDiv then "idiv" else "imod") (← trI c args[4]!) (← trI c args[5]!)
+  if (fn == ``Int.ediv || fn == ``Int.emod) && args.size == 2 then
+    return .bin (if fn == ``Int.ediv then "idiv" else "imod") (← trI c args[0]!) (← trI c args[1]!)
   if fn == ``HPow.hPow && args.size == 6 && isIntTy args[0]! && isNatTy args[1]! && isIntTy args[2]! then
     return .bin "ipow" (← trI c args[4]!) (← tr c args[5]!)
   -- if-then-else
@@ -1605,7 +1610,7 @@ partial def cExprWI (sym : Name → String) (ind : String) : E → CGM String
     let x ← cExprWI sym ind a
     let y ← if op == "ipow" then cExprW sym ind b else cExprWI sym ind b
     let t ← freshC
-    let fnm := match op with | "iadd" => "add" | "isub" => "sub" | "imul" => "mul" | _ => "pow"
+    let fnm := match op with | "iadd" => "add" | "isub" => "sub" | "imul" => "mul" | "idiv" => "div" | "imod" => "mod" | _ => "pow"
     emitC s!"{ind}lm2wi {t};"
     emitC s!"{ind}if (lm2wi_{fnm}(&{x}, &{y}, &{t})) return LM2_OVERFLOW;"
     return t
@@ -1983,7 +1988,7 @@ partial def mExprI (sym : Name → String) (ind : String) : E → MGM String
     let x ← mExprI sym ind a
     let y ← if op == "ipow" then mExpr sym ind b else mExprI sym ind b
     let t ← freshMI
-    let p := match op with | "iadd" => "IAdd" | "isub" => "ISub" | "imul" => "IMul" | _ => "IPow"
+    let p := match op with | "iadd" => "IAdd" | "isub" => "ISub" | "imul" => "IMul" | "idiv" => "IDiv" | "imod" => "IMod" | _ => "IPow"
     emitM s!"{ind}IF LM2Nat.{p}({x}, {y}, {t}) THEN RETURN Overflow END;"
     return t
   | .ite c th el => do
@@ -2273,7 +2278,7 @@ partial def mExprWI (sym : Name → String) (ind : String) : E → MGM String
     let x ← mExprWI sym ind a
     let y ← if op == "ipow" then mExprW sym ind b else mExprWI sym ind b
     let t ← freshMWI
-    let p := match op with | "iadd" => "IAdd" | "isub" => "ISub" | "imul" => "IMul" | _ => "IPow"
+    let p := match op with | "iadd" => "IAdd" | "isub" => "ISub" | "imul" => "IMul" | "idiv" => "IDiv" | "imod" => "IMod" | _ => "IPow"
     emitM s!"{ind}IF LM2Wide.{p}({x}, {y}, {t}) THEN RETURN Overflow END;"
     return t
   | .ite c th el => do
@@ -2741,6 +2746,8 @@ partial def evalI (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     | "iadd" => chkI b (a + (← evalI b defs args i w lv y))
     | "isub" => chkI b (a - (← evalI b defs args i w lv y))
     | "imul" => chkI b (a * (← evalI b defs args i w lv y))
+    | "idiv" => chkI b (a / (← evalI b defs args i w lv y))
+    | "imod" => chkI b (a % (← evalI b defs args i w lv y))
     | "ipow" =>
       let c ← evalE b defs args i w lv y
       -- Int.pow is Nat.pow on natAbs: Lean's runtime panics for exponent > 2^32-1 (see "pow")

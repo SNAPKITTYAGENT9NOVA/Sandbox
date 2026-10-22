@@ -330,6 +330,30 @@ BEGIN
   r := a - b; RETURN FALSE
 END ISub;
 
+PROCEDURE IDiv (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;
+VAR
+  q, m: LONGINT;
+BEGIN
+  IF b = 0 THEN r := 0; RETURN FALSE END;
+  IF (a = MIN(LONGINT)) AND (b = -1) THEN RETURN TRUE END;
+  IF b = -1 THEN r := -a; RETURN FALSE END;
+  q := a / b; m := a - q * b;              (* ISO "/": truncated quotient; |q * b| <= |a| *)
+  IF m < 0 THEN
+    IF b > 0 THEN q := q - 1 ELSE q := q + 1 END
+  END;
+  r := q; RETURN FALSE
+END IDiv;
+
+PROCEDURE IMod (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;
+VAR
+  q: LONGINT;
+BEGIN
+  IF b = 0 THEN r := a; RETURN FALSE END;
+  IF b = -1 THEN r := 0; RETURN FALSE END;
+  IF IDiv(a, b, q) THEN RETURN TRUE END;
+  r := a - q * b; RETURN FALSE
+END IMod;
+
 PROCEDURE IMul (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;
 VAR
   p, lim: LONGCARD;

@@ -57,6 +57,8 @@ PROCEDURE ISign (VAR a, r: WInt) : BOOLEAN;
 PROCEDURE IAdd (VAR a, b, r: WInt) : BOOLEAN;
 PROCEDURE ISub (VAR a, b, r: WInt) : BOOLEAN;
 PROCEDURE IMul (VAR a, b, r: WInt) : BOOLEAN;
+PROCEDURE IDiv (VAR a, b, r: WInt) : BOOLEAN;             (* Int.ediv *)
+PROCEDURE IMod (VAR a, b, r: WInt) : BOOLEAN;             (* Int.emod *)
 PROCEDURE IPow (VAR a: WInt; VAR e: Wide; VAR r: WInt) : BOOLEAN;
 PROCEDURE IToNat (VAR a: WInt; VAR r: Wide) : BOOLEAN;
 PROCEDURE INatAbs (VAR a: WInt; VAR r: Wide) : BOOLEAN;

@@ -334,6 +334,20 @@ static int lm2wi_mul(const lm2wi *a, const lm2wi *b, lm2wi *r) {
   lm2wi t; if (lm2w_mul(&a->m, &b->m, &t.m)) return 1;
   t.neg = a->neg != b->neg; lm2wi_fix(&t); *r = t; return 0;
 }
+static int lm2wi_divmod(const lm2wi *a, const lm2wi *b, lm2wi *q, lm2wi *m) {
+  lm2w q0, r0, one;
+  if (b->m.n == 0u) { q->neg = 0; q->m.n = 0u; *m = *a; return 0; }
+  lm2w_divmod(&a->m, &b->m, &q0, &r0);
+  if (a->neg && r0.n != 0u) {
+    lm2w_set(&one, 1u);
+    if (lm2w_add(&q0, &one, &q0)) return 1;
+    lm2w_sub(&b->m, &r0, &r0);
+  }
+  q->m = q0; q->neg = a->neg != b->neg; lm2wi_fix(q);
+  m->m = r0; m->neg = 0; lm2wi_fix(m); return 0;
+}
+static int lm2wi_div(const lm2wi *a, const lm2wi *b, lm2wi *r) { lm2wi q, m; if (lm2wi_divmod(a, b, &q, &m)) return 1; *r = q; return 0; }
+static int lm2wi_mod(const lm2wi *a, const lm2wi *b, lm2wi *r) { lm2wi q, m; if (lm2wi_divmod(a, b, &q, &m)) return 1; *r = m; return 0; }
 static int lm2wi_pow(const lm2wi *a, const lm2w *e, lm2wi *r) {
   lm2wi t; if (lm2w_pow(&a->m, e, &t.m)) return 1;
   t.neg = a->neg && e->n != 0u && (e->d[0] & 1u); lm2wi_fix(&t); *r = t; return 0;

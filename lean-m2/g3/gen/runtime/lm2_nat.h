@@ -207,6 +207,23 @@ static int lm2_isub(int64_t a, int64_t b, int64_t *r) {
   *r = a - b; return 0;
 }
 /* product through magnitudes: |a*b| must be <= 2^63-1, or exactly 2^63 when negative */
+/* Int.ediv / Int.emod (Lean's / and % on Int): x / 0 = 0, x % 0 = x, 0 <= x % y < |y| */
+static int lm2_idiv(int64_t a, int64_t b, int64_t *r) {
+  int64_t q, m;
+  if (b == 0) { *r = 0; return 0; }
+  if (a == INT64_MIN && b == -1) return 1;
+  q = a / b; m = a % b;
+  if (m < 0) q = b > 0 ? q - 1 : q + 1;
+  *r = q; return 0;
+}
+static int lm2_imod(int64_t a, int64_t b, int64_t *r) {
+  int64_t m;
+  if (b == 0) { *r = a; return 0; }
+  if (b == -1) { *r = 0; return 0; }
+  m = a % b;
+  if (m < 0) m = b > 0 ? m + b : m - b;
+  *r = m; return 0;
+}
 static int lm2_imul(int64_t a, int64_t b, int64_t *r) {
   uint64_t ua = lm2_natabs(a), ub = lm2_natabs(b), p;
   int neg = (a < 0) != (b < 0);

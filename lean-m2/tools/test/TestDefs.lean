@@ -106,3 +106,12 @@ def catalan : Nat → Nat :=
       let b : Nat → Nat := fun m => if h : m < n then ih m h else 0
       conv2 b (n - 1)
 end T
+namespace T
+/-- eta-expanded form of the same definition -/
+def catalan' (n : Nat) : Nat :=
+  Nat.strongRec (fun n ih =>
+    if n = 0 then 1
+    else
+      let b : Nat → Nat := fun m => if h : m < n then ih m h else 0
+      conv2 b (n - 1)) n
+end T

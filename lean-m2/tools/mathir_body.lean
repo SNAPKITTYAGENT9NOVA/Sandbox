@@ -1080,9 +1080,15 @@ def extract (n : Name) (arity : Nat) (kind : Kind := .nat) : MetaM (Except Strin
   if kind == .nat && arity == 1 then
     let ci ← getConstInfo n
     if let some v := ci.value? then
+      -- `Nat.strongRec F` or its eta-expansion `fun n => Nat.strongRec F n`
       let v := v.consumeMData
-      if v.isAppOfArity `Nat.strongRec 2 then
-        let F := v.appArg!
+      let core := match v with
+        | .lam _ _ b _ => b.consumeMData
+        | _ => v
+      let (sf, sargs) := core.getAppFnArgs
+      let ok := sf == `Nat.strongRec && (sargs.size == 2 || (sargs.size == 3 && sargs[2]! == .bvar 0 && v.isLambda))
+      if ok && !sargs[1]!.hasLooseBVars then
+        let F := sargs[1]!
         return ← withLocalDeclD `n (mkConst ``Nat) fun x => do
           let ih : Expr := .lam `m (mkConst ``Nat) (.lam `h (mkConst ``True) (mkApp (mkConst `MathIR.tab) (.bvar 1)) .default) .default
           let body ← Core.betaReduce (F.beta #[x, ih])

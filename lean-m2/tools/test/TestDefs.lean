@@ -115,3 +115,17 @@ def catalan' (n : Nat) : Nat :=
       let b : Nat → Nat := fun m => if h : m < n then ih m h else 0
       conv2 b (n - 1)) n
 end T
+namespace T
+/-- binary strong recursion (ℤ), the shape of OeisA112521.T -/
+def T2 (n k : Nat) : Int :=
+  if n = 0 ∨ k = 0 then 0
+  else if n = 1 ∧ k = 1 then 1
+  else T2 n (k - 2) + T2 n (k - 1) - 2 * T2 (n - 1) (k - 1) + T2 (n - 1) k + T2 (n - 2) k
+termination_by n + k
+decreasing_by all_goals omega
+/-- binary strong recursion (ℕ): binomial coefficients by Pascal's rule -/
+def pascal (n k : Nat) : Nat :=
+  if k = 0 then 1 else if n = 0 then 0 else pascal (n - 1) (k - 1) + pascal (n - 1) k
+termination_by n
+decreasing_by all_goals omega
+end T

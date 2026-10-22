@@ -133,7 +133,7 @@ partial def E.mentions (v : Nat) (e : E) : Bool :=
 partial def E.heavy (e : E) : Bool :=
   (match e with
    | .bin "pow" _ _ | .bin "ipow" _ _ | .bin "qpow" _ _ | .fold .. | .iter .. => true
-   | .prim op _ => op ∈ ["fact", "choose", "minfac", "prime", "lcm", "fib", "bigomega", "pfnth"]
+   | .prim op _ => op ∈ ["fact", "choose", "minfac", "prime", "lcm", "fib", "bigomega", "pfnth", "qbern"]
    | _ => false) || e.children.any E.heavy
 
 inductive FnDef where
@@ -801,6 +801,7 @@ partial def trQ (c : Ctx) (e : Expr) : TrM E := do
   if (fn == ``Int.cast || fn == ``IntCast.intCast) && args.size == 3 && isRatTy args[0]! then
     return .prim "qofint" [← trI c args[2]!]
   if fn == ``Neg.neg && args.size == 3 && isRatTy args[0]! then return .prim "qneg" [← trQ c args[2]!]
+  if fn == `bernoulli && args.size == 1 then return .prim "qbern" [← tr c args[0]!]
   if fn == `Inv.inv && args.size == 3 && isRatTy args[0]! then return .prim "qinv" [← trQ c args[2]!]
   if (fn == ``HAdd.hAdd || fn == ``HSub.hSub || fn == ``HMul.hMul || fn == ``HDiv.hDiv) && args.size == 6 &&
       isRatTy args[0]! && isRatTy args[1]! && isRatTy args[2]! then
@@ -1762,6 +1763,12 @@ partial def cExprWQ (sym : Name → String) (ind : String) : E → CGM String
     let t ← freshC
     emitC s!"{ind}lm2wq {t}; lm2wq_neg(&{v}, &{t});"
     return t
+  | .prim "qbern" [x] => do
+    let v ← cExprW sym ind x
+    let t ← freshC
+    emitC s!"{ind}lm2wq {t};"
+    emitC s!"{ind}if (lm2wq_bern(&{v}, &{t})) return LM2_OVERFLOW;"
+    return t
   | .prim "qinv" [x] => do
     let v ← cExprWQ sym ind x
     let t ← freshC
@@ -2479,6 +2486,11 @@ partial def mExprWQ (sym : Name → String) (ind : String) : E → MGM String
     let t ← freshMWQ
     emitM s!"{ind}IF LM2Wide.QNeg({v}, {t}) THEN RETURN Overflow END;"
     return t
+  | .prim "qbern" [x] => do
+    let v ← mExprW sym ind x
+    let t ← freshMWQ
+    emitM s!"{ind}IF LM2Wide.QBern({v}, {t}) THEN RETURN Overflow END;"
+    return t
   | .prim "qinv" [x] => do
     let v ← mExprWQ sym ind x
     let t ← freshMWQ
@@ -2961,6 +2973,19 @@ partial def evalQ (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
   | .prim "qneg" [x] => do
     let (n, d) ← evalQ b defs args i w lv x
     pure (-n, d)
+  | .prim "qbern" [x] => do
+    let n ← evalE b defs args i w lv x
+    if n > 128 then throw "bernoulli bound"
+    let mut B : Array (Int × Nat) := #[(1, 1)]
+    for m in [1:n + 1] do
+      let mut sn : Int := 0
+      let mut sd : Nat := 1
+      for k in [0:m] do
+        tick b
+        let (bn, bd) := B[k]!
+        (sn, sd) ← qnorm b (sn * bd + Int.ofNat (chooseN (m + 1) k) * bn * sd) (sd * bd)
+      B := B.push (← qnorm b (-sn) (sd * (m + 1)))
+    pure B[n]!
   | .prim "qinv" [x] => do
     let (n, d) ← evalQ b defs args i w lv x
     if n == 0 then pure (0, 1)

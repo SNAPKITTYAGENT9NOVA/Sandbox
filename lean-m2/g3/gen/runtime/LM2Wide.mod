@@ -766,6 +766,38 @@ BEGIN
   r := t; RETURN FALSE                           (* num^e / den^e stays coprime *)
 END QPow;
 
+PROCEDURE QBern (VAR n: Wide; VAR r: WRat) : BOOLEAN;
+VAR
+  B: ARRAY [0..128] OF WRat;
+  s, term, cq: WRat;
+  mw, kw, c, m1: Wide;
+  nn, m, k: LONGCARD;
+BEGIN
+  IF Get(n, nn) THEN RETURN TRUE END;
+  IF nn > 128 THEN RETURN TRUE END;
+  Set(mw, 1);
+  IF QOfNat(mw, B[0]) THEN RETURN TRUE END;
+  m := 1;
+  WHILE m <= nn DO
+    Set(m1, m + 1); Set(kw, 0);
+    IF QOfNat(kw, s) THEN RETURN TRUE END;
+    k := 0;
+    WHILE k < m DO
+      Set(kw, k);
+      IF Choose(m1, kw, c) THEN RETURN TRUE END;
+      IF QOfNat(c, cq) THEN RETURN TRUE END;
+      IF QMul(cq, B[k], term) THEN RETURN TRUE END;
+      IF QAdd(s, term, s) THEN RETURN TRUE END;
+      INC(k)
+    END;
+    IF QOfNat(m1, cq) THEN RETURN TRUE END;
+    IF QDiv(s, cq, s) THEN RETURN TRUE END;
+    IF QNeg(s, B[m]) THEN RETURN TRUE END;
+    INC(m)
+  END;
+  r := B[nn]; RETURN FALSE
+END QBern;
+
 PROCEDURE QNum (VAR a: WRat; VAR r: WInt) : BOOLEAN;
 BEGIN
   r := a.num; RETURN FALSE

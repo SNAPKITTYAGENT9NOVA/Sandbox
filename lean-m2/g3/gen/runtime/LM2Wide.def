@@ -75,6 +75,7 @@ PROCEDURE QDiv (VAR a, b, r: WRat) : BOOLEAN;
 PROCEDURE QNeg (VAR a, r: WRat) : BOOLEAN;
 PROCEDURE QInv (VAR a, r: WRat) : BOOLEAN;
 PROCEDURE QPow (VAR a: WRat; VAR e: Wide; VAR r: WRat) : BOOLEAN;
+PROCEDURE QBern (VAR n: Wide; VAR r: WRat) : BOOLEAN;      (* Mathlib bernoulli n, n <= 128 *)
 PROCEDURE QNum (VAR a: WRat; VAR r: WInt) : BOOLEAN;
 PROCEDURE QDen (VAR a: WRat; VAR r: Wide) : BOOLEAN;
 

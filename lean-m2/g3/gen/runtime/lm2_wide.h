@@ -410,6 +410,24 @@ static int lm2wq_pow(const lm2wq *a, const lm2w *e, lm2wq *r) {
   if (lm2wi_pow(&a->num, e, &t.num) || lm2w_pow(&a->den, e, &t.den)) return 1;
   *r = t; return 0;
 }
+/* Mathlib's bernoulli n (B_1 = -1/2): B_m = -(1/(m+1)) sum_{k<m} C(m+1,k) B_k; n <= 128 */
+static int lm2wq_bern(const lm2w *n, lm2wq *r) {
+  lm2wq B[129], s, term, cq;
+  lm2w mw, kw, c, m1;
+  uint64_t nn, m, k;
+  if (lm2w_get(n, &nn) || nn > 128u) return 1;
+  lm2w_set(&mw, 1u); if (lm2wq_ofnat(&mw, &B[0])) return 1;
+  for (m = 1u; m <= nn; m++) {
+    lm2w_set(&m1, m + 1u); lm2w_set(&kw, 0u);
+    if (lm2wq_ofnat(&kw, &s)) return 1;
+    for (k = 0u; k < m; k++) {
+      lm2w_set(&kw, k);
+      if (lm2w_choose(&m1, &kw, &c) || lm2wq_ofnat(&c, &cq) || lm2wq_mul(&cq, &B[k], &term) || lm2wq_add(&s, &term, &s)) return 1;
+    }
+    if (lm2wq_ofnat(&m1, &cq) || lm2wq_div(&s, &cq, &s) || lm2wq_neg(&s, &B[m])) return 1;
+  }
+  *r = B[nn]; return 0;
+}
 static int lm2wq_num(const lm2wq *a, lm2wi *r) { *r = a->num; return 0; }
 static int lm2wq_den(const lm2wq *a, lm2w *r) { *r = a->den; return 0; }
 static int lm2wq_cmp(const lm2wq *a, const lm2wq *b) {   /* sign of a.num*b.den - b.num*a.den */

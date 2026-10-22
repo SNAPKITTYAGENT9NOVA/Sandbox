@@ -866,6 +866,16 @@ partial def trI (c : Ctx) (e : Expr) : TrM E := do
     let body ← withLocalDeclD `k (mkConst ``Nat) fun x =>
       trI { c with loops := c.loops.push (x, id) } (args[4]!.beta #[elem.beta #[x]])
     return .fold (if fn == `Finset.sum then "isum" else "iprod") id lo hi incl filt body
+  -- call of another ℤ-valued candidate ℕ^k → ℤ (k ≤ 3, explicit ℕ arguments); translated only if
+  -- the callee is (closure later)
+  if fn != .anonymous && fn != c.self && !args.isEmpty && args.size ≤ 3 then
+    if let some ci := (← getEnv).find? fn then
+      let isCand ← forallTelescope ci.type fun xs body => do
+        if !isIntTy body || xs.size != args.size then return false
+        for x in xs do
+          unless isNatTy (← inferType x) && (← x.fvarId!.getBinderInfo).isExplicit do return false
+        return true
+      if isCand && ci.value?.isSome then return .call fn (← args.toList.mapM (tr c))
   -- a non-recursive ℤ-valued helper ℕ^k → ℤ: inline its body (bounded depth). A recursive one
   -- elaborates to a recursor / WellFounded.fix and is rejected while translating the body.
   if fn != .anonymous && c.depth < 4 then
@@ -1299,6 +1309,15 @@ partial def cExpr (sym : Name → String) (ind : String) : E → CGM String
 /-- ℤ subterms as checked `int64_t` (an intermediate outside int64 is reported as overflow).
 An ill-typed node becomes `#error`, so the build fails closed. -/
 partial def cExprI (sym : Name → String) (ind : String) : E → CGM String
+  | .call f as => do
+    let mut vs : Array String := #[]
+    for a in as do vs := vs.push (← cExpr sym ind a)
+    let u ← freshC
+    let t ← freshC
+    emitC s!"{ind}uint64_t {u};"
+    emitC s!"{ind}if ({sym f}({", ".intercalate (vs.toList ++ [s!"&{u}"])}) != LM2_OK) return LM2_OVERFLOW;"
+    emitC s!"{ind}int64_t {t} = {u} <= (uint64_t)INT64_MAX ? (int64_t){u} : -(int64_t)(~{u}) - 1;"
+    return t
   | .prev j => pure s!"w{j}"
   | .prim "qnum" [_] => do
     let t ← freshC
@@ -1585,6 +1604,13 @@ partial def cExprW (sym : Name → String) (ind : String) : E → CGM String
     return t
 
 partial def cExprWI (sym : Name → String) (ind : String) : E → CGM String
+  | .call f as => do
+    let mut vs : Array String := #[]
+    for a in as do vs := vs.push (← cExprW sym ind a)
+    let t ← freshC
+    emitC s!"{ind}lm2wi {t};"
+    emitC s!"{ind}if ({sym f}_w({", ".intercalate (vs.toList.map (s!"&{·}") ++ [s!"&{t}"])}) != LM2_OK) return LM2_OVERFLOW;"
+    return t
   | .prev j => pure s!"w{j}"
   | .prim "qnum" [x] => do
     let v ← cExprWQ sym ind x
@@ -1964,6 +1990,14 @@ partial def mExpr (sym : Name → String) (ind : String) : E → MGM String
 
 /-- ℤ subterms as checked LONGINT (see `cExprI`); an ill-typed node fails compilation. -/
 partial def mExprI (sym : Name → String) (ind : String) : E → MGM String
+  | .call f as => do
+    let mut vs : Array String := #[]
+    for a in as do vs := vs.push (← mExpr sym ind a)
+    let u ← freshM
+    let t ← freshMI
+    emitM s!"{ind}IF {sym f}({", ".intercalate (vs.toList ++ [u])}) # Ok THEN RETURN Overflow END;"
+    emitM s!"{ind}{t} := LM2Nat.BitsInt({u});"
+    return t
   | .prev j => do declMI s!"w{j}"; pure s!"w{j}"
   | .prim "qnum" [_] => do
     let t ← freshMI
@@ -2253,6 +2287,12 @@ partial def mExprW (sym : Name → String) (ind : String) : E → MGM String
     return t
 
 partial def mExprWI (sym : Name → String) (ind : String) : E → MGM String
+  | .call f as => do
+    let mut vs : Array String := #[]
+    for a in as do vs := vs.push (← mExprW sym ind a)
+    let t ← freshMWI
+    emitM s!"{ind}IF {sym f}W({", ".intercalate (vs.toList ++ [t])}) # Ok THEN RETURN Overflow END;"
+    return t
   | .prev j => do declMWI s!"w{j}"; pure s!"w{j}"
   | .prim "qnum" [x] => do
     let v ← mExprWQ sym ind x
@@ -2740,6 +2780,14 @@ partial def evalI (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
   | .prim "isign" [x] => do pure (← evalI b defs args i w lv x).sign
   | .prim "qnum" [x] => do pure (← evalQ b defs args i w lv x).1
   | .prev j => pure (w.getD j 0)
+  | .call f xs => do
+    tick b
+    let mut vs : Array Nat := #[]
+    for x in xs do vs := vs.push (← evalE b defs args i w lv x)
+    match defs.get? f with
+    | some (.directInt _ e) => evalI b defs vs 0 #[] {} e
+    | some d@(.recurInt ..) => evalRec b defs d vs
+    | _ => throw "unknown ℤ callee"
   | .bin op x y => do
     let a ← evalI b defs args i w lv x
     match op with

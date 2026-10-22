@@ -79,3 +79,6 @@ end T
 namespace T
 def zdivmod (a b : Nat) : Int := ((a : Int) - 100) / ((b : Int) - 7) * 1000 + ((a : Int) - 100) % ((b : Int) - 7)
 end T
+namespace T
+def zcall (n : Nat) : Int := if n % 2 = 0 then zfib (n + 1) / 2 else -(zalt (n - 1))
+end T

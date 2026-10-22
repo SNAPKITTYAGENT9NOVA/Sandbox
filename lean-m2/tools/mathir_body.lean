@@ -2975,7 +2975,9 @@ partial def evalQ (b : Budget) (defs : Std.HashMap Name FnDef) (args : Array Nat
     pure (-n, d)
   | .prim "qbern" [x] => do
     let n ← evalE b defs args i w lv x
-    if n > 128 then throw "bernoulli bound"
+    -- Mathlib's bernoulli recomputes every earlier value (call tree ~ 2^n in the compiled
+    -- reference); beyond n = 20 the reference itself is out of budget, so such inputs are skipped
+    if n > 20 then throw "naive-recursion budget (bernoulli)"
     let mut B : Array (Int × Nat) := #[(1, 1)]
     for m in [1:n + 1] do
       let mut sn : Int := 0

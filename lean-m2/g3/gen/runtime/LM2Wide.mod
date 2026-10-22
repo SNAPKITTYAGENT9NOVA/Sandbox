@@ -603,6 +603,39 @@ BEGIN
   t.neg := a.neg # b.neg; Fix(t); r := t; RETURN FALSE
 END IMul;
 
+PROCEDURE IDivMod (VAR a, b, q, m: WInt) : BOOLEAN;
+VAR
+  q0, r0, one, bm: Wide; neg: BOOLEAN;
+BEGIN
+  IF b.m.n = 0 THEN q.neg := FALSE; q.m.n := 0; m := a; RETURN FALSE END;
+  DivMod(a.m, b.m, q0, r0);
+  IF a.neg AND (r0.n # 0) THEN
+    Set(one, 1);
+    IF Add(q0, one, q0) THEN RETURN TRUE END;
+    bm := b.m;
+    IF Sub(bm, r0, r0) THEN RETURN TRUE END
+  END;
+  neg := a.neg # b.neg;
+  q.m := q0; q.neg := neg; Fix(q);
+  m.m := r0; m.neg := FALSE; Fix(m); RETURN FALSE
+END IDivMod;
+
+PROCEDURE IDiv (VAR a, b, r: WInt) : BOOLEAN;
+VAR
+  q, m: WInt;
+BEGIN
+  IF IDivMod(a, b, q, m) THEN RETURN TRUE END;
+  r := q; RETURN FALSE
+END IDiv;
+
+PROCEDURE IMod (VAR a, b, r: WInt) : BOOLEAN;
+VAR
+  q, m: WInt;
+BEGIN
+  IF IDivMod(a, b, q, m) THEN RETURN TRUE END;
+  r := m; RETURN FALSE
+END IMod;
+
 PROCEDURE IPow (VAR a: WInt; VAR e: Wide; VAR r: WInt) : BOOLEAN;
 VAR
   t: WInt;

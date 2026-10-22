@@ -1,4 +1,4 @@
-MATHIR candidates=22 translated=19 blocked=3 cases=3783 ok=3115 overflow=668 skipped_over_budget=65 ir_fidelity_mismatches=0
+MATHIR candidates=24 translated=21 blocked=3 cases=4299 ok=3570 overflow=729 skipped_over_budget=90 ir_fidelity_mismatches=0
 translated:
   T.AllSmallOdd (1-ary, prop)
   T.AllSmallOdd2 (1-ary, prop)
@@ -16,9 +16,11 @@ translated:
   T.sq (1-ary)
   T.zalt (1-ary, int, rec K=1)
   T.zdiff (2-ary, int)
+  T.zdivmod (2-ary, int)
   T.zfib (1-ary, int, rec K=2)
   T.zneg (1-ary, int)
   T.zpoly (1-ary, int)
+  T.zcall (1-ary, int)
 blocked reasons:
   1  no Lean reference: Lean's compiler generates no code for decide (P xs) (noncomputable constants in it: [T.ncVal])
   1  unbounded ∃

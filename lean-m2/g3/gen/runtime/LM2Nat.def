@@ -35,6 +35,7 @@ PROCEDURE DigRev (b, n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* ofDigits b (d
 (* MathIR v4: ℤ subterms as checked LONGINT (same algorithms as lm2_nat.h);
    TRUE = an intermediate left [MIN(LONGINT), MAX(LONGINT)] *)
 PROCEDURE IntBits (a: LONGINT) : LONGCARD;                      (* v10: two's-complement bits of a *)
+PROCEDURE BitsInt (u: LONGCARD) : LONGINT;                     (* inverse of IntBits *)
 PROCEDURE NatAbs (a: LONGINT) : LONGCARD;
 PROCEDURE ToNat (a: LONGINT) : LONGCARD;                        (* 0 for a < 0 *)
 PROCEDURE ISign (a: LONGINT) : LONGINT;
@@ -43,6 +44,8 @@ PROCEDURE INeg (a: LONGINT; VAR r: LONGINT) : BOOLEAN;
 PROCEDURE IAdd (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;
 PROCEDURE ISub (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;
 PROCEDURE IMul (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE IDiv (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;      (* Int.ediv *)
+PROCEDURE IMod (a, b: LONGINT; VAR r: LONGINT) : BOOLEAN;      (* Int.emod *)
 PROCEDURE IPow (a: LONGINT; e: LONGCARD; VAR r: LONGINT) : BOOLEAN;
 (* MathIR v5 *)
 PROCEDURE Xor (a, b: LONGCARD) : LONGCARD;                      (* bitwise exclusive or *)

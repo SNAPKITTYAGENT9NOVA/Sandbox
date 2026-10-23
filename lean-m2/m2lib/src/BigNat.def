@@ -1,0 +1,50 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE BigNat;
+(* Exact natural numbers of bounded size (Lean `Nat` beyond 64 bits).
+
+   Representation: little-endian base-2^32 digits, Capacity = 256 digits (8192 bits).
+   This is exact arithmetic with an explicit capacity, not arbitrary precision: every
+   operation that could exceed the capacity returns FALSE and leaves its result undefined;
+   a TRUE result is always the exact Lean value. Lean semantics: truncated subtraction,
+   x / 0 = 0, x % 0 = x, 0 ^ 0 = 1.
+   Results may be passed as the same variable as an argument. *)
+
+CONST
+  Capacity = 256;                              (* base-2^32 digits *)
+  MaxBits = Capacity * 32;
+
+TYPE
+  Digits = ARRAY [0..Capacity - 1] OF CARDINAL;
+  T = RECORD
+        n: CARDINAL;                           (* used digits; d[n-1] # 0; zero has n = 0 *)
+        d: Digits
+      END;
+
+PROCEDURE FromNat (VAR r: T; x: LONGCARD);
+PROCEDURE ToNat (VAR a: T; VAR x: LONGCARD) : BOOLEAN;    (* FALSE iff a >= 2^64 *)
+PROCEDURE IsZero (VAR a: T) : BOOLEAN;
+PROCEDURE Cmp (VAR a, b: T) : INTEGER;                     (* -1, 0, 1 *)
+PROCEDURE Equal (VAR a, b: T) : BOOLEAN;
+PROCEDURE BitLength (VAR a: T) : CARDINAL;
+PROCEDURE IsOdd (VAR a: T) : BOOLEAN;
+
+PROCEDURE Add (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Sub (VAR a, b, r: T);                            (* truncated *)
+PROCEDURE Mul (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE MulSmall (VAR a: T; k: CARDINAL; VAR r: T) : BOOLEAN;
+PROCEDURE AddSmall (VAR a: T; k: CARDINAL; VAR r: T) : BOOLEAN;
+PROCEDURE DivMod (VAR a, b, q, m: T);                      (* b = 0: q = 0, m = a *)
+PROCEDURE Div (VAR a, b, r: T);
+PROCEDURE Mod (VAR a, b, r: T);
+PROCEDURE DivModSmall (VAR a: T; k: CARDINAL; VAR q: T; VAR m: CARDINAL);   (* k > 0 *)
+PROCEDURE Pow (VAR a: T; e: LONGCARD; VAR r: T) : BOOLEAN;
+PROCEDURE Gcd (VAR a, b, r: T);
+PROCEDURE Lcm (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Sqrt (VAR a, r: T);                              (* floor square root *)
+
+(* decimal text; FromDecimal returns FALSE on a non-digit, an empty string or overflow *)
+PROCEDURE ToDecimal (VAR a: T; VAR s: ARRAY OF CHAR) : BOOLEAN;   (* FALSE if s is too short *)
+PROCEDURE FromDecimal (s: ARRAY OF CHAR; VAR r: T) : BOOLEAN;
+
+END BigNat.

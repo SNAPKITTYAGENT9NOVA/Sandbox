@@ -1,0 +1,67 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE NatSeq;
+(* Finite lists of 64-bit naturals (Lean `List ℕ`), and finite sets of naturals as sorted
+   duplicate-free lists (Lean `Finset ℕ`). Capacity is MaxLen elements; every procedure that
+   can grow a list returns FALSE, leaving the list unchanged, when the result would not fit.
+   Sums and products return FALSE on 64-bit overflow. Indexing follows Lean's `getD _ _ 0`. *)
+
+CONST
+  MaxLen = 4096;
+
+TYPE
+  T = RECORD
+        len: CARDINAL;
+        x: ARRAY [0..MaxLen - 1] OF LONGCARD
+      END;
+  Pred = PROCEDURE (LONGCARD) : BOOLEAN;
+  Fn = PROCEDURE (LONGCARD) : LONGCARD;
+
+PROCEDURE Clear (VAR l: T);                                         (* [] *)
+PROCEDURE Push (VAR l: T; v: LONGCARD) : BOOLEAN;                   (* l ++ [v] *)
+PROCEDURE Range (n: LONGCARD; VAR l: T) : BOOLEAN;                  (* List.range n = [0, …, n-1] *)
+PROCEDURE Icc (a, b: LONGCARD; VAR l: T) : BOOLEAN;                 (* [a, b]; empty if a > b *)
+PROCEDURE Ico (a, b: LONGCARD; VAR l: T) : BOOLEAN;                 (* [a, b) *)
+PROCEDURE Ioc (a, b: LONGCARD; VAR l: T) : BOOLEAN;                 (* (a, b] *)
+PROCEDURE Get (VAR l: T; i: LONGCARD) : LONGCARD;                   (* l.getD i 0 *)
+PROCEDURE Head (VAR l: T; dflt: LONGCARD) : LONGCARD;               (* l.headD dflt *)
+PROCEDURE Last (VAR l: T; dflt: LONGCARD) : LONGCARD;               (* l.getLastD dflt *)
+
+PROCEDURE Filter (VAR l: T; p: Pred; VAR r: T);                     (* order preserved *)
+PROCEDURE Map (VAR l: T; f: Fn; VAR r: T);
+PROCEDURE Append (VAR a, b: T; VAR r: T) : BOOLEAN;
+PROCEDURE Reverse (VAR l: T; VAR r: T);
+PROCEDURE Take (VAR l: T; n: LONGCARD; VAR r: T);
+PROCEDURE Drop (VAR l: T; n: LONGCARD; VAR r: T);
+
+PROCEDURE Sum (VAR l: T; VAR s: LONGCARD) : BOOLEAN;                (* sum [] = 0 *)
+PROCEDURE Prod (VAR l: T; VAR p: LONGCARD) : BOOLEAN;               (* prod [] = 1 *)
+PROCEDURE Count (VAR l: T; v: LONGCARD) : LONGCARD;
+PROCEDURE CountP (VAR l: T; p: Pred) : LONGCARD;
+PROCEDURE Mem (VAR l: T; v: LONGCARD) : BOOLEAN;
+PROCEDURE All (VAR l: T; p: Pred) : BOOLEAN;                        (* true on [] *)
+PROCEDURE Any (VAR l: T; p: Pred) : BOOLEAN;                        (* false on [] *)
+PROCEDURE IndexOf (VAR l: T; v: LONGCARD) : LONGCARD;               (* List.idxOf: l.len if absent *)
+PROCEDURE Sup (VAR l: T) : LONGCARD;                                (* Finset.sup id: 0 on [] *)
+PROCEDURE Inf (VAR l: T; VAR m: LONGCARD) : BOOLEAN;                (* FALSE on [] (Finset.min = ⊤) *)
+PROCEDURE Nodup (VAR l: T) : BOOLEAN;
+PROCEDURE IsSorted (VAR l: T) : BOOLEAN;                            (* non-decreasing *)
+PROCEDURE Equal (VAR a, b: T) : BOOLEAN;
+
+PROCEDURE Sort (VAR l: T);                                          (* in place, ascending, stable *)
+PROCEDURE Dedup (VAR l: T);                                         (* keep first occurrences *)
+PROCEDURE ToFinset (VAR l: T);                                      (* sort + remove duplicates *)
+PROCEDURE FinsetMem (VAR s: T; v: LONGCARD) : BOOLEAN;              (* binary search; s a finset *)
+PROCEDURE Union (VAR a, b: T; VAR r: T) : BOOLEAN;                  (* finsets *)
+PROCEDURE Inter (VAR a, b: T; VAR r: T);
+PROCEDURE Diff (VAR a, b: T; VAR r: T);                             (* a \ b *)
+PROCEDURE Subset (VAR a, b: T) : BOOLEAN;                           (* a ⊆ b *)
+PROCEDURE Image (VAR s: T; f: Fn; VAR r: T);                        (* Finset.image: result a finset *)
+
+PROCEDURE Divisors (n: LONGCARD; VAR l: T) : BOOLEAN;               (* Nat.divisors, ascending; ∅ for 0 *)
+PROCEDURE ProperDivisors (n: LONGCARD; VAR l: T) : BOOLEAN;
+PROCEDURE PrimeFactorsList (n: LONGCARD; VAR l: T) : BOOLEAN;       (* with multiplicity, ascending *)
+PROCEDURE PrimeFactors (n: LONGCARD; VAR l: T) : BOOLEAN;           (* Nat.primeFactors *)
+PROCEDURE PrimesBelow (n: LONGCARD; VAR l: T) : BOOLEAN;            (* Nat.primesBelow: p < n *)
+
+END NatSeq.

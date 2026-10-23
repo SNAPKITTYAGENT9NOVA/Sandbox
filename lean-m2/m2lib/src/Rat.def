@@ -1,0 +1,47 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE Rat;
+(* Exact rationals (Lean/Mathlib `Rat`): numerator BigInt, denominator BigNat > 0, always in
+   lowest terms; zero is 0/1. Lean semantics: x / 0 = 0, 0⁻¹ = 0, q ^ e for natural e.
+   num and den agree with `Rat.num` / `Rat.den`. Floor and ceil follow `Int.floor` /
+   `Int.ceil`; NatFloor is `Nat.floor` (0 for negatives).
+   Operations that can exceed the capacity return FALSE; a TRUE result is exact. *)
+
+IMPORT BigNat, BigInt;
+
+TYPE
+  T = RECORD
+        num: BigInt.T;
+        den: BigNat.T
+      END;
+
+PROCEDURE FromInt (VAR r: T; x: LONGINT);
+PROCEDURE FromNat (VAR r: T; x: LONGCARD);
+PROCEDURE OfBigInt (VAR a: BigInt.T; VAR r: T);
+PROCEDURE Make (VAR n: BigInt.T; VAR d: BigNat.T; VAR r: T) : BOOLEAN;   (* n / d, d = 0 gives 0 *)
+PROCEDURE MakeSmall (n: LONGINT; d: LONGCARD; VAR r: T) : BOOLEAN;
+PROCEDURE Num (VAR a: T; VAR r: BigInt.T);
+PROCEDURE Den (VAR a: T; VAR r: BigNat.T);
+PROCEDURE IsZero (VAR a: T) : BOOLEAN;
+PROCEDURE IsInt (VAR a: T) : BOOLEAN;
+PROCEDURE Sign (VAR a: T) : INTEGER;
+PROCEDURE Cmp (VAR a, b: T; VAR c: INTEGER) : BOOLEAN;    (* c ∈ {-1,0,1}; FALSE if the cross-products exceed the capacity *)
+PROCEDURE Equal (VAR a, b: T) : BOOLEAN;
+
+PROCEDURE Neg (VAR a, r: T);
+PROCEDURE Abs (VAR a, r: T);
+PROCEDURE Inv (VAR a, r: T);
+PROCEDURE Add (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Sub (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Mul (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Div (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Pow (VAR a: T; e: LONGCARD; VAR r: T) : BOOLEAN;
+PROCEDURE ZPow (VAR a: T; e: LONGINT; VAR r: T) : BOOLEAN;   (* integer exponent; x^(-k) = (x^k)⁻¹ *)
+PROCEDURE Floor (VAR a: T; VAR r: BigInt.T) : BOOLEAN;
+PROCEDURE Ceil (VAR a: T; VAR r: BigInt.T) : BOOLEAN;
+PROCEDURE NatFloor (VAR a: T; VAR r: BigNat.T);
+
+(* "n/d" or "n" for integers, e.g. "-691/2730" *)
+PROCEDURE ToText (VAR a: T; VAR s: ARRAY OF CHAR) : BOOLEAN;
+
+END Rat.

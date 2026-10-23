@@ -1,0 +1,50 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE ModArith;
+(* Modular arithmetic on 64-bit naturals (ZMod n representatives in [0, n)), deterministic
+   primality and integer factorisation for the full 64-bit range.
+   Conventions: a modulus m = 0 is rejected (FALSE / 0 as documented per procedure);
+   ZMod 1 has the single element 0. *)
+
+CONST
+  MaxFactors = 64;                                   (* a 64-bit number has < 64 prime factors *)
+
+TYPE
+  Factored = RECORD
+               count: CARDINAL;                        (* number of distinct primes *)
+               p: ARRAY [0..MaxFactors - 1] OF LONGCARD;  (* ascending *)
+               e: ARRAY [0..MaxFactors - 1] OF CARDINAL
+             END;
+
+PROCEDURE ExtGcd (a, b: LONGINT; VAR x, y: LONGINT) : LONGINT;
+  (* returns g = gcd(|a|, |b|) >= 0 and Bézout x, y with a x + b y = g (Int.gcdA / gcdB style;
+     requires |a|, |b| < 2^62 so that the coefficients stay representable) *)
+PROCEDURE Inverse (a, m: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+  (* r = a⁻¹ mod m; FALSE if m = 0 or gcd(a, m) # 1; m = 1 gives r = 0 *)
+PROCEDURE SubMod (a, b, m: LONGCARD) : LONGCARD;      (* (a - b) mod m in ZMod m; m > 0 *)
+PROCEDURE NegMod (a, m: LONGCARD) : LONGCARD;          (* -a in ZMod m; m > 0 *)
+PROCEDURE Crt (a1, m1, a2, m2: LONGCARD; VAR x, m: LONGCARD) : BOOLEAN;
+  (* least x ≥ 0 with x ≡ a1 (m1), x ≡ a2 (m2), m = lcm; FALSE if inconsistent, m1 or m2 = 0,
+     or lcm ≥ 2^64. Moduli need not be coprime. *)
+
+PROCEDURE IsPrime (n: LONGCARD) : BOOLEAN;
+  (* deterministic Miller–Rabin with bases 2,3,5,7,11,13,17,19,23,29,31,37 (exact below 3.3e24) *)
+PROCEDURE PollardRho (n: LONGCARD) : LONGCARD;
+  (* a non-trivial factor of a composite n > 3 (Brent's variant); n itself if n is prime or n ≤ 3 *)
+PROCEDURE Factor (n: LONGCARD; VAR f: Factored);
+  (* n = ∏ p_i^e_i; count = 0 for n ≤ 1 (factorization 0 = 0 in Mathlib) *)
+PROCEDURE MinFacFast (n: LONGCARD) : LONGCARD;         (* = Nat.minFac n, using Factor *)
+
+PROCEDURE Order (a, m: LONGCARD) : LONGCARD;
+  (* orderOf (a : ZMod m): least k ≥ 1 with a^k = 1; 0 if gcd(a, m) # 1 or m = 0; 1 for m = 1 *)
+PROCEDURE CarmichaelLambda (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+  (* Carmichael λ(n); λ(1) = 1; λ(0) := 0; FALSE only on overflow (never for 64-bit n) *)
+PROCEDURE PrimitiveRoot (m: LONGCARD; VAR g: LONGCARD) : BOOLEAN;
+  (* least g in [1, m) of order φ(m); FALSE if none (m not 1, 2, 4, p^k or 2p^k); m = 1: g = 0 *)
+PROCEDURE SqrtModPrime (a, p: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+  (* least r with r^2 ≡ a (mod p), p prime (Tonelli–Shanks); FALSE if a is a non-residue or
+     p is not prime *)
+PROCEDURE DiscreteLog (g, h, m: LONGCARD; VAR k: LONGCARD) : BOOLEAN;
+  (* least k ≥ 0 with g^k ≡ h (mod m), baby-step giant-step; m ≤ 2^40 (else FALSE) *)
+
+END ModArith.

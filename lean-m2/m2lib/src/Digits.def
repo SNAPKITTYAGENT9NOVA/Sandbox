@@ -1,0 +1,33 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE Digits;
+(* Mathlib's `Nat.digits b n` (least significant digit first) and related functions.
+   Edge cases follow Mathlib: digits b 0 = []; digits 0 n = [n] for n > 0; digits 1 n is a
+   list of n ones. Lists are returned in caller-supplied arrays; procedures that fill an array
+   return FALSE when it is too small. *)
+
+CONST
+  MaxLen = 64;                                   (* enough for any 64-bit n in base >= 2 *)
+
+TYPE
+  List = RECORD
+           len: CARDINAL;
+           d: ARRAY [0..MaxLen - 1] OF LONGCARD
+         END;
+
+PROCEDURE ToDigits (b, n: LONGCARD; VAR l: List) : BOOLEAN;        (* FALSE: base 1 with n > MaxLen *)
+PROCEDURE OfDigits (b: LONGCARD; VAR l: List; VAR r: LONGCARD) : BOOLEAN;   (* ∑ d_i b^i *)
+PROCEDURE Length (b, n: LONGCARD) : LONGCARD;                      (* (digits b n).length *)
+PROCEDURE Sum (b, n: LONGCARD) : LONGCARD;                         (* (digits b n).sum *)
+PROCEDURE At (b, n, k: LONGCARD) : LONGCARD;                       (* (digits b n)[k], 0 past the end *)
+PROCEDURE Count (b, n, d: LONGCARD) : LONGCARD;                    (* (digits b n).count d *)
+PROCEDURE Reverse (b, n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;     (* ofDigits b (digits b n).reverse *)
+PROCEDURE IsPalindrome (b, n: LONGCARD) : BOOLEAN;                 (* digits b n = (digits b n).reverse *)
+PROCEDURE Product (b, n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;     (* (digits b n).prod *)
+PROCEDURE AllDistinct (b, n: LONGCARD) : BOOLEAN;                  (* (digits b n).Nodup *)
+PROCEDURE ContainsDigit (b, n, d: LONGCARD) : BOOLEAN;
+PROCEDURE Concat (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;      (* a * 10^(digits 10 b).length + b; so b = 0 gives a *)
+
+PROCEDURE Bits (n: LONGCARD; VAR l: List);                         (* Nat.bits as 0/1, least significant first *)
+
+END Digits.

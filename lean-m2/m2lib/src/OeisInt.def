@@ -1,0 +1,43 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE OeisInt;
+(* ℤ- and ℚ-valued sequence definitions (and ℕ-valued ones whose Lean definition goes through
+   ℚ, ℤ or matrices) from google-deepmind/formal-conjectures @ 84cf7f8,
+   FormalConjectures/OEIS/<number>.lean. Intermediate values are exact (BigInt / Rat).
+   FALSE means the result does not fit the output type, an intermediate exceeds the
+   BigInt/Rat capacity, or n exceeds the stated bound. *)
+
+IMPORT Rat;
+
+PROCEDURE A003162 (n: LONGCARD; VAR r: Rat.T) : BOOLEAN;
+PROCEDURE A007406 (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* num (∑_{k=1}^n 1/k^2) *)
+PROCEDURE A046969 (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* den (B_{2n} / (2n (2n-1))); n <= 128 *)
+PROCEDURE A060841 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;    (* num (det [1/lcm(i,j)])⁻¹; n <= 16 *)
+PROCEDURE A064169 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;    (* num H_n - den H_n *)
+PROCEDURE A067857 (n: LONGCARD; VAR r: Rat.T) : BOOLEAN;
+PROCEDURE A071524 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;    (* det [i^2 + j^2 prime]; n <= 16 *)
+PROCEDURE A071532 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;    (* n <= 5000 *)
+PROCEDURE A080326 (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE A087455 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A093818 (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* gcd (|num H_n|, n!) *)
+PROCEDURE A100434 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A100434c (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;   (* the auxiliary `c` *)
+PROCEDURE A100434d (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;   (* the auxiliary `d` *)
+PROCEDURE A109074 (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE A110566 (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* lcm [1..n] / den H_n *)
+PROCEDURE A113250 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A113252 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A113254 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A113255 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A116150 (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE A129365 (n: LONGCARD; VAR r: Rat.T) : BOOLEAN;
+PROCEDURE A176477 (n: LONGCARD; VAR r: Rat.T) : BOOLEAN;
+PROCEDURE A179524 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A179537 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A180017 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A182510 (n: LONGCARD; VAR r: LONGINT) : BOOLEAN;
+PROCEDURE A357513 (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+
+PROCEDURE IntXor (a, b: LONGINT) : LONGINT;                   (* Int.xor (two's complement) *)
+
+END OeisInt.

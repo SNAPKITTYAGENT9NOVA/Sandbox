@@ -1,0 +1,47 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE BigInt;
+(* Exact integers (Lean `Int`) as sign and BigNat magnitude, with BigNat's capacity.
+
+   Lean semantics:
+     a / b and a % b are Int.ediv / Int.emod (Euclidean): 0 <= a % b < |b| for b # 0;
+     a / 0 = 0, a % 0 = a.
+     toNat a = max a 0; natAbs a = |a|; sign a ∈ {-1, 0, 1}.
+   Operations that can exceed the capacity return FALSE; a TRUE result is exact.
+   Zero is never negative. *)
+
+IMPORT BigNat;
+
+TYPE
+  T = RECORD
+        neg: BOOLEAN;
+        mag: BigNat.T
+      END;
+
+PROCEDURE FromInt (VAR r: T; x: LONGINT);
+PROCEDURE FromNat (VAR r: T; x: LONGCARD);
+PROCEDURE OfBigNat (VAR a: BigNat.T; VAR r: T);
+PROCEDURE ToInt (VAR a: T; VAR x: LONGINT) : BOOLEAN;     (* FALSE iff outside LONGINT *)
+PROCEDURE ToNat (VAR a: T; VAR r: BigNat.T);              (* Int.toNat *)
+PROCEDURE NatAbs (VAR a: T; VAR r: BigNat.T);
+PROCEDURE IsZero (VAR a: T) : BOOLEAN;
+PROCEDURE IsNeg (VAR a: T) : BOOLEAN;
+PROCEDURE Sign (VAR a: T) : INTEGER;
+PROCEDURE Cmp (VAR a, b: T) : INTEGER;
+PROCEDURE Equal (VAR a, b: T) : BOOLEAN;
+
+PROCEDURE Neg (VAR a, r: T);
+PROCEDURE Abs (VAR a, r: T);
+PROCEDURE Add (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Sub (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Mul (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE DivMod (VAR a, b, q, m: T) : BOOLEAN;           (* Euclidean *)
+PROCEDURE Div (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Mod (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Pow (VAR a: T; e: LONGCARD; VAR r: T) : BOOLEAN;
+PROCEDURE Gcd (VAR a, b: T; VAR r: BigNat.T);             (* Int.gcd: natural *)
+
+PROCEDURE ToDecimal (VAR a: T; VAR s: ARRAY OF CHAR) : BOOLEAN;
+PROCEDURE FromDecimal (s: ARRAY OF CHAR; VAR r: T) : BOOLEAN;   (* optional leading '-' *)
+
+END BigInt.

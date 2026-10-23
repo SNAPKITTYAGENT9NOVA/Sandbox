@@ -1,0 +1,47 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE NumberTheory;
+(* Elementary number theory on 64-bit naturals, with Mathlib's definitions and edge cases.
+   Procedures returning BOOLEAN with a VAR result report FALSE when the exact result exceeds
+   2^64 - 1; all others are total. Factor-based procedures use trial division (cost grows with
+   the square root of the largest prime factor). *)
+
+PROCEDURE Gcd (a, b: LONGCARD) : LONGCARD;                    (* Nat.gcd; gcd 0 0 = 0 *)
+PROCEDURE Lcm (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;    (* Nat.lcm; lcm 0 x = 0 *)
+PROCEDURE Coprime (a, b: LONGCARD) : BOOLEAN;
+
+PROCEDURE AddMod (a, b, m: LONGCARD) : LONGCARD;              (* (a + b) mod m, m > 0 *)
+PROCEDURE MulMod (a, b, m: LONGCARD) : LONGCARD;              (* (a * b) mod m, m > 0, no overflow *)
+PROCEDURE PowMod (a, e, m: LONGCARD) : LONGCARD;              (* a^e mod m; m = 1 gives 0; m = 0 gives 0 *)
+
+PROCEDURE MinFac (n: LONGCARD) : LONGCARD;                    (* Nat.minFac: 0 ↦ 2, 1 ↦ 1 *)
+PROCEDURE IsPrime (n: LONGCARD) : BOOLEAN;                    (* Nat.Prime *)
+PROCEDURE NextPrime (n: LONGCARD; VAR p: LONGCARD) : BOOLEAN; (* least prime >= n *)
+PROCEDURE NthPrime (k: LONGCARD; VAR p: LONGCARD) : BOOLEAN;  (* Nat.nth Nat.Prime k; nth 0 = 2 *)
+PROCEDURE PrimeCounting (n: LONGCARD) : LONGCARD;             (* π n = #{p ≤ n prime} *)
+PROCEDURE PrimeCountingBelow (n: LONGCARD) : LONGCARD;        (* π' n = #{p < n prime} *)
+
+PROCEDURE BigOmega (n: LONGCARD) : LONGCARD;                  (* Ω: prime factors with multiplicity; Ω 0 = 0 *)
+PROCEDURE Omega (n: LONGCARD) : LONGCARD;                     (* ω: distinct prime factors; ω 0 = 0 *)
+PROCEDURE PrimeFactorNth (n, k: LONGCARD) : LONGCARD;         (* (primeFactorsList n)[k], 0 past the end *)
+PROCEDURE MaxPrimeFac (n: LONGCARD) : LONGCARD;               (* largest prime factor; 0 for n <= 1 *)
+PROCEDURE PadicValNat (p, n: LONGCARD) : LONGCARD;            (* padicValNat: 0 if p <= 1 or n = 0 *)
+PROCEDURE Factorization (n, p: LONGCARD) : LONGCARD;          (* n.factorization p: 0 unless p is prime *)
+PROCEDURE Radical (n: LONGCARD) : LONGCARD;                   (* ∏ n.primeFactors; primeFactors 0 = ∅, so rad 0 = 1 *)
+PROCEDURE SquarefreePart (n: LONGCARD) : LONGCARD;            (* ∏ p^(e mod 2) over n.factorization *)
+PROCEDURE IsSquarefree (n: LONGCARD) : BOOLEAN;               (* Squarefree: 0 is not, 1 is *)
+PROCEDURE IsPrimePow (n: LONGCARD) : BOOLEAN;                 (* n = p^k, p prime, k >= 1 *)
+PROCEDURE IsPowerful (n: LONGCARD) : BOOLEAN;                 (* every prime factor divides with exponent >= 2 *)
+
+PROCEDURE DivisorCount (n: LONGCARD) : LONGCARD;              (* #n.divisors; 0 for n = 0 *)
+PROCEDURE DivisorSigma (k, n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;   (* σ_k n = ∑_{d ∣ n} d^k; σ_k 0 = 0 *)
+PROCEDURE ProperDivisorSum (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;  (* ∑ n.properDivisors *)
+PROCEDURE IsPerfect (n: LONGCARD) : BOOLEAN;                  (* Nat.Perfect: 0 < n ∧ ∑ properDivisors = n *)
+PROCEDURE Totient (n: LONGCARD) : LONGCARD;                   (* φ; φ 0 = 0 *)
+PROCEDURE Moebius (n: LONGCARD) : INTEGER;                    (* μ; μ 0 = 0 *)
+PROCEDURE UnitaryDivisorCount (n: LONGCARD) : LONGCARD;       (* 2^ω(n) for n > 0, 0 for n = 0 *)
+
+PROCEDURE Legendre (a: LONGINT; p: LONGCARD) : INTEGER;       (* legendreSym p a for prime p (p = 2: a mod 2) *)
+PROCEDURE Jacobi (a: LONGINT; b: LONGCARD) : INTEGER;         (* jacobiSym a b = ∏ over primeFactorsList b *)
+
+END NumberTheory.

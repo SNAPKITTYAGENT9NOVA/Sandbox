@@ -97,3 +97,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ github.event.release.tag_name }}" dist/*.tar.gz dist/SHA256SUMS dist/gate-report.txt --clobber
+
+      - name: Push the packaged library sources to a branch (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          T=$(ls dist/*.tar.gz); X=$(mktemp -d); tar -xzf "$T" -C "$X"; P=$(ls "$X")
+          rm -rf lean-m2/lib && mkdir -p lean-m2/lib/c lean-m2/lib/m2
+          cp "$X/$P"/src/c/* "$X/$P"/include/* lean-m2/lib/c/
+          cp "$X/$P"/src/m2/* lean-m2/lib/m2/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          B="lib/generated-${GITHUB_SHA::12}"
+          git checkout -b "$B"
+          git add lean-m2/lib
+          git commit -m "lean-m2/lib: generated C and Modula-2 library from release package $P (run $GITHUB_RUN_ID)"
+          git push origin "$B"
+          echo "::notice title=Library branch::$B"

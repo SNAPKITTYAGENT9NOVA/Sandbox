@@ -1,0 +1,34 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE Combinatorics;
+(* Factorials, binomial coefficients, recurrences and combinatorial numbers with Mathlib's
+   definitions. 64-bit procedures return FALSE when the exact value exceeds 2^64 - 1; the
+   BigNat / Rat procedures return FALSE only when the value exceeds BigNat's capacity. *)
+
+IMPORT BigNat, BigInt, Rat;
+
+PROCEDURE Factorial (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;            (* n! ; 0! = 1 *)
+PROCEDURE FactorialBig (n: LONGCARD; VAR r: BigNat.T) : BOOLEAN;
+PROCEDURE DescFactorial (n, k: LONGCARD; VAR r: LONGCARD) : BOOLEAN;     (* n (n-1) … (n-k+1) *)
+PROCEDURE AscFactorial (n, k: LONGCARD; VAR r: LONGCARD) : BOOLEAN;      (* n (n+1) … (n+k-1) *)
+PROCEDURE DoubleFactorial (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;      (* n‼ ; 0‼ = 1‼ = 1 *)
+
+PROCEDURE Choose (n, k: LONGCARD; VAR r: LONGCARD) : BOOLEAN;            (* Nat.choose; 0 for k > n *)
+PROCEDURE ChooseBig (n, k: LONGCARD; VAR r: BigNat.T) : BOOLEAN;
+PROCEDURE CentralBinom (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;         (* (2n choose n) *)
+PROCEDURE Multichoose (n, k: LONGCARD; VAR r: LONGCARD) : BOOLEAN;       (* (n + k - 1 choose k) *)
+
+PROCEDURE Fib (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;                  (* Nat.fib; fib 0 = 0 *)
+PROCEDURE FibBig (n: LONGCARD; VAR r: BigNat.T) : BOOLEAN;
+PROCEDURE Lucas (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;                (* L 0 = 2, L 1 = 1 *)
+PROCEDURE Catalan (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;              (* catalan n = (2n choose n)/(n+1) *)
+PROCEDURE CatalanBig (n: LONGCARD; VAR r: BigNat.T) : BOOLEAN;
+PROCEDURE Partitions (n: LONGCARD; VAR r: BigNat.T) : BOOLEAN;           (* p(n): number of partitions; n <= 2048 *)
+PROCEDURE Derangements (n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;         (* numDerangements *)
+PROCEDURE StirlingSecond (n, k: LONGCARD; VAR r: BigNat.T) : BOOLEAN;    (* S(n, k); n <= 512 *)
+
+PROCEDURE Bernoulli (n: LONGCARD; VAR r: Rat.T) : BOOLEAN;               (* Mathlib bernoulli (B 1 = -1/2); n <= 256 *)
+PROCEDURE BernoulliPlus (n: LONGCARD; VAR r: Rat.T) : BOOLEAN;           (* Mathlib bernoulli' (B 1 = +1/2) *)
+PROCEDURE Harmonic (n: LONGCARD; VAR r: Rat.T) : BOOLEAN;                (* harmonic n = ∑_{i<n} 1/(i+1) *)
+
+END Combinatorics.

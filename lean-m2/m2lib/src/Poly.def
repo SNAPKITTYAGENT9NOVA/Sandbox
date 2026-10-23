@@ -1,0 +1,48 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE Poly;
+(* Univariate polynomials over ℚ (Mathlib `Polynomial ℚ`, written ℚ[X]) of degree ≤ MaxDeg,
+   with exact Rat coefficients. Mathlib conventions: natDegree 0 = 0, leadingCoeff 0 = 0,
+   p / 0 = 0 and p % 0 = p, gcd is normalised (monic, or 0 for gcd 0 0).
+   Every procedure that can exceed the degree bound or the Rat capacity returns FALSE.
+   Results may be passed as the same variable as an argument. *)
+
+IMPORT Rat;
+
+CONST
+  MaxDeg = 48;
+
+TYPE
+  T = RECORD
+        deg: INTEGER;                               (* -1 for the zero polynomial *)
+        c: ARRAY [0..MaxDeg] OF Rat.T               (* c[i] is the coefficient of X^i *)
+      END;
+
+PROCEDURE Zero (VAR p: T);
+PROCEDURE Const (VAR q: Rat.T; VAR p: T);                       (* C q *)
+PROCEDURE ConstInt (k: LONGINT; VAR p: T);
+PROCEDURE Monomial (VAR q: Rat.T; k: CARDINAL; VAR p: T) : BOOLEAN;   (* C q * X^k *)
+PROCEDURE SetCoeff (VAR p: T; k: CARDINAL; VAR q: Rat.T) : BOOLEAN;
+PROCEDURE IsZero (VAR p: T) : BOOLEAN;
+PROCEDURE NatDegree (VAR p: T) : CARDINAL;
+PROCEDURE Coeff (VAR p: T; k: CARDINAL; VAR q: Rat.T);         (* 0 beyond the degree *)
+PROCEDURE LeadingCoeff (VAR p: T; VAR q: Rat.T);
+PROCEDURE IsMonic (VAR p: T) : BOOLEAN;
+PROCEDURE Equal (VAR a, b: T) : BOOLEAN;
+
+PROCEDURE Add (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Sub (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Neg (VAR a, r: T);
+PROCEDURE Scale (VAR q: Rat.T; VAR a, r: T) : BOOLEAN;          (* C q * a *)
+PROCEDURE Mul (VAR a, b, r: T) : BOOLEAN;
+PROCEDURE Pow (VAR a: T; e: CARDINAL; VAR r: T) : BOOLEAN;     (* a^0 = 1 *)
+PROCEDURE Eval (VAR p: T; VAR x, r: Rat.T) : BOOLEAN;           (* Polynomial.eval x p *)
+PROCEDURE IsRoot (VAR p: T; VAR x: Rat.T) : BOOLEAN;           (* FALSE also on capacity failure *)
+PROCEDURE Derivative (VAR a, r: T) : BOOLEAN;
+PROCEDURE Comp (VAR p, q, r: T) : BOOLEAN;                     (* p.comp q = p (q X) *)
+PROCEDURE DivMod (VAR a, b, q, m: T) : BOOLEAN;                (* a = b q + m, deg m < deg b *)
+PROCEDURE Gcd (VAR a, b, g: T) : BOOLEAN;                      (* monic gcd; gcd 0 0 = 0 *)
+PROCEDURE ToText (VAR p: T; VAR s: ARRAY OF CHAR) : BOOLEAN;
+  (* coefficient list from degree 0 upward, e.g. "[1, 0, -1/2]"; "[]" for 0 *)
+
+END Poly.

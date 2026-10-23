@@ -1,0 +1,51 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE NatSearch;
+(* Mathlib's counting and search operators on decidable predicates over ℕ, and a catalogue of
+   the predicates the formal-conjectures corpus applies them to.
+   Lean's Nat.nth and Nat.find are defined for infinite / provably nonempty predicates; here the
+   search is bounded by `limit` and returns FALSE when no witness lies in [0, limit], which is
+   reported, never guessed. *)
+
+IMPORT NatSeq;
+
+TYPE
+  Pred = NatSeq.Pred;
+
+PROCEDURE Count (p: Pred; n: LONGCARD) : LONGCARD;
+  (* Nat.count p n = #{m < n | p m} *)
+PROCEDURE Nth (p: Pred; k, limit: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+  (* Nat.nth p k (0-indexed) if it is ≤ limit *)
+PROCEDURE Find (p: Pred; limit: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+  (* Nat.find: least m with p m, if m ≤ limit *)
+PROCEDURE FindFrom (p: Pred; lo, limit: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+  (* least m ≥ lo with p m, if m ≤ limit *)
+PROCEDURE GreatestBelow (p: Pred; n: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+  (* greatest m < n with p m (Nat.findGreatest-style, strict); FALSE if none *)
+PROCEDURE CountIcc (p: Pred; a, b: LONGCARD) : LONGCARD;      (* #{m ∈ [a, b] | p m} *)
+
+(* predicates (all total; values from Mathlib definitions) *)
+PROCEDURE Prime (n: LONGCARD) : BOOLEAN;                     (* Nat.Prime *)
+PROCEDURE Composite (n: LONGCARD) : BOOLEAN;                 (* 1 < n ∧ ¬ n.Prime *)
+PROCEDURE Squarefree (n: LONGCARD) : BOOLEAN;
+PROCEDURE Powerful (n: LONGCARD) : BOOLEAN;                  (* Nat.Powerful: 0 and 1 count *)
+PROCEDURE Square (n: LONGCARD) : BOOLEAN;                    (* IsSquare *)
+PROCEDURE PrimePow (n: LONGCARD) : BOOLEAN;                  (* IsPrimePow *)
+PROCEDURE Even (n: LONGCARD) : BOOLEAN;
+PROCEDURE Odd (n: LONGCARD) : BOOLEAN;
+PROCEDURE Perfect (n: LONGCARD) : BOOLEAN;                   (* Nat.Perfect *)
+PROCEDURE Abundant (n: LONGCARD) : BOOLEAN;                  (* Nat.Abundant: n < ∑ properDivisors *)
+PROCEDURE Deficient (n: LONGCARD) : BOOLEAN;                 (* Nat.Deficient: ∑ properDivisors < n *)
+PROCEDURE Pseudoperfect (n: LONGCARD) : BOOLEAN;
+  (* Nat.Pseudoperfect: 0 < n ∧ ∃ s ⊆ properDivisors n, ∑ s = n; FALSE for n > 2^20 *)
+PROCEDURE Weird (n: LONGCARD) : BOOLEAN;                     (* abundant, not pseudoperfect; n ≤ 2^20 *)
+PROCEDURE Triangular (n: LONGCARD) : BOOLEAN;                (* ∃ k, n = k (k+1) / 2 *)
+PROCEDURE Palindrome10 (n: LONGCARD) : BOOLEAN;              (* digits 10 n = reverse *)
+PROCEDURE Refactorable (n: LONGCARD) : BOOLEAN;              (* 0 < n ∧ #divisors n ∣ n *)
+PROCEDURE TwinPrime (n: LONGCARD) : BOOLEAN;                 (* n and n + 2 prime *)
+PROCEDURE SophieGermain (n: LONGCARD) : BOOLEAN;             (* n and 2n + 1 prime *)
+PROCEDURE Practical (n: LONGCARD) : BOOLEAN;
+  (* 0 < n and every m with 1 ≤ m ≤ n is a sum of distinct divisors of n; FALSE for n > 2^20 *)
+PROCEDURE Carmichael (n: LONGCARD) : BOOLEAN;                (* composite, ∀ a coprime, a^(n-1) ≡ 1 *)
+
+END NatSearch.

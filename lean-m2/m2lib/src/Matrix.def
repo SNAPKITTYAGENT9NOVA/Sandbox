@@ -1,0 +1,47 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE Matrix;
+(* Square matrices of size n ≤ MaxN (Lean `Matrix (Fin n) (Fin n) R`).
+   IntMat has 64-bit integer entries; its determinant is computed exactly in BigInt by
+   fraction-free (Bareiss) elimination, so it never overflows below BigInt's capacity.
+   RatMat entries are exact rationals; determinant and rank use Gaussian elimination in Rat.
+   Matrix products of IntMat return FALSE on 64-bit overflow of any entry or partial sum.
+   The 0 × 0 determinant is 1 (Matrix.det_isEmpty). *)
+
+IMPORT BigInt, Rat;
+
+CONST
+  MaxN = 16;
+
+TYPE
+  Index = [0..MaxN - 1];
+  IntMat = RECORD
+             n: CARDINAL;
+             a: ARRAY Index, Index OF LONGINT
+           END;
+  RatMat = RECORD
+             n: CARDINAL;
+             a: ARRAY Index, Index OF Rat.T
+           END;
+
+PROCEDURE IntZero (n: CARDINAL; VAR m: IntMat);
+PROCEDURE IntIdentity (n: CARDINAL; VAR m: IntMat);
+PROCEDURE IntEqual (VAR a, b: IntMat) : BOOLEAN;
+PROCEDURE IntTranspose (VAR a, r: IntMat);                      (* r may be a *)
+PROCEDURE IntAdd (VAR a, b, r: IntMat) : BOOLEAN;               (* FALSE on size mismatch/overflow *)
+PROCEDURE IntMul (VAR a, b, r: IntMat) : BOOLEAN;
+PROCEDURE IntPow (VAR a: IntMat; e: LONGCARD; VAR r: IntMat) : BOOLEAN;   (* a^0 = 1 *)
+PROCEDURE IntTrace (VAR a: IntMat; VAR t: LONGINT) : BOOLEAN;
+PROCEDURE IntDet (VAR a: IntMat; VAR d: BigInt.T) : BOOLEAN;   (* FALSE only past BigInt capacity *)
+PROCEDURE IntPowMod (VAR a: IntMat; e, m: LONGCARD; VAR r: IntMat) : BOOLEAN;
+  (* entries of a^e reduced into [0, m); requires 0 < m < 2^62; FALSE otherwise *)
+
+PROCEDURE RatFromInt (VAR a: IntMat; VAR r: RatMat);
+PROCEDURE RatDet (VAR a: RatMat; VAR d: Rat.T) : BOOLEAN;      (* FALSE only past Rat capacity *)
+PROCEDURE RatRank (VAR a: RatMat; VAR k: CARDINAL) : BOOLEAN;
+PROCEDURE RatMul (VAR a, b, r: RatMat) : BOOLEAN;
+PROCEDURE RatInverse (VAR a, r: RatMat) : BOOLEAN;
+  (* Lean's Matrix.inv: the inverse if det ≠ 0, the zero matrix if det = 0; FALSE only past
+     Rat capacity *)
+
+END Matrix.

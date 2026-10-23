@@ -1,0 +1,46 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE NatArith;
+(* Lean 4 `Nat` arithmetic on 64-bit LONGCARD.
+
+   Every operation follows Lean's definition exactly on the values it can represent:
+     a - b = 0 when b > a (truncated subtraction)
+     a / 0 = 0,  a % 0 = a,  0 ^ 0 = 1
+   Operations whose mathematical result can exceed 2^64 - 1 return FALSE and leave the
+   result undefined; they never wrap. All other operations are total. *)
+
+CONST
+  MaxNat = MAX(LONGCARD);                    (* 2^64 - 1 *)
+
+PROCEDURE Add (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE Mul (a, b: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE Pow (a, e: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+
+PROCEDURE Sub (a, b: LONGCARD) : LONGCARD;   (* truncated *)
+PROCEDURE Div (a, b: LONGCARD) : LONGCARD;   (* a / 0 = 0 *)
+PROCEDURE Mod (a, b: LONGCARD) : LONGCARD;   (* a % 0 = a *)
+PROCEDURE Pred (a: LONGCARD) : LONGCARD;     (* Nat.pred: pred 0 = 0 *)
+
+PROCEDURE Min (a, b: LONGCARD) : LONGCARD;
+PROCEDURE Max (a, b: LONGCARD) : LONGCARD;
+PROCEDURE Dist (a, b: LONGCARD) : LONGCARD;  (* Nat.dist: |a - b| *)
+
+PROCEDURE Dvd (a, b: LONGCARD) : BOOLEAN;    (* a ∣ b; 0 ∣ b iff b = 0 *)
+PROCEDURE IsEven (a: LONGCARD) : BOOLEAN;
+PROCEDURE IsOdd (a: LONGCARD) : BOOLEAN;
+
+PROCEDURE Sqrt (n: LONGCARD) : LONGCARD;     (* Nat.sqrt: largest r with r * r <= n *)
+PROCEDURE IsSquare (n: LONGCARD) : BOOLEAN;
+PROCEDURE Log (b, n: LONGCARD) : LONGCARD;   (* Nat.log b n; 0 when b <= 1 or n < b *)
+PROCEDURE Log2 (n: LONGCARD) : LONGCARD;     (* Nat.log2; log2 0 = 0 *)
+PROCEDURE Clog (b, n: LONGCARD) : LONGCARD;  (* Nat.clog b n: least k with n <= b^k; 0 when b <= 1 or n <= 1 *)
+
+PROCEDURE Xor (a, b: LONGCARD) : LONGCARD;
+PROCEDURE LAnd (a, b: LONGCARD) : LONGCARD;  (* bitwise and (Nat.land) *)
+PROCEDURE LOr (a, b: LONGCARD) : LONGCARD;   (* bitwise or (Nat.lor) *)
+PROCEDURE TestBit (n, i: LONGCARD) : BOOLEAN;
+PROCEDURE PopCount (n: LONGCARD) : LONGCARD; (* number of 1 bits (Nat.bits.count true) *)
+PROCEDURE ShiftLeft (a, k: LONGCARD; VAR r: LONGCARD) : BOOLEAN;
+PROCEDURE ShiftRight (a, k: LONGCARD) : LONGCARD;
+
+END NatArith.

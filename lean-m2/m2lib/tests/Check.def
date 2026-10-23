@@ -1,0 +1,19 @@
+(* SPDX-License-Identifier: AGPL-3.0-only *)
+(* Copyright (C) 2026 SNAPKITTYWEST (Sovereign Kernel Project) *)
+DEFINITION MODULE Check;
+(* Minimal test harness: every check prints one line on failure, counts passes and failures,
+   and Done terminates the program with exit status 1 if any check failed (0 otherwise). *)
+
+IMPORT Rat;
+
+PROCEDURE Nat (name: ARRAY OF CHAR; arg: LONGCARD; ok: BOOLEAN; got, want: LONGCARD);
+PROCEDURE Int (name: ARRAY OF CHAR; arg: LONGCARD; ok: BOOLEAN; got, want: LONGINT);
+PROCEDURE RatInt (name: ARRAY OF CHAR; arg: LONGCARD; ok: BOOLEAN; VAR got: Rat.T; want: LONGINT);
+PROCEDURE RatFrac (name: ARRAY OF CHAR; arg: LONGCARD; ok: BOOLEAN; VAR got: Rat.T;
+                   num: LONGINT; den: LONGCARD);
+PROCEDURE Text (name: ARRAY OF CHAR; ok: BOOLEAN; got, want: ARRAY OF CHAR);
+PROCEDURE True (name: ARRAY OF CHAR; cond: BOOLEAN);
+PROCEDURE Fails (name: ARRAY OF CHAR; arg: LONGCARD; ok: BOOLEAN);   (* expects ok = FALSE *)
+PROCEDURE Done (suite: ARRAY OF CHAR);
+
+END Check.

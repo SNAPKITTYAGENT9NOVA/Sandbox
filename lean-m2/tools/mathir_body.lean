@@ -110,6 +110,24 @@ partial def E.calls (e : E) : List Name :=
   (match e with | .call f _ => [f] | _ => []) ++ e.children.flatMap E.calls
 
 /-- Replace loop variable `v` by `r` (ids are unique, so no capture). -/
+partial def E.substArg (e : E) (i : Nat) (r : E) : E :=
+  match e with
+  | .arg j => if j == i then r else .arg j
+  | .bin op a b => .bin op (a.substArg i r) (b.substArg i r)
+  | .prim op as => .prim op (as.map (·.substArg i r))
+  | .cmp k a b => .cmp k (a.substArg i r) (b.substArg i r)
+  | .and a b => .and (a.substArg i r) (b.substArg i r)
+  | .or a b => .or (a.substArg i r) (b.substArg i r)
+  | .not a => .not (a.substArg i r)
+  | .tab a => .tab (a.substArg i r)
+  | .tab2 a b => .tab2 (a.substArg i r) (b.substArg i r)
+  | .ite c t e => .ite (c.substArg i r) (t.substArg i r) (e.substArg i r)
+  | .fold op id lo hi incl f b => .fold op id (lo.substArg i r) (hi.substArg i r) incl (f.substArg i r) (b.substArg i r)
+  | .call fn as => .call fn (as.map (·.substArg i r))
+  | .iter id acc lo hi incl f i0 b =>
+    .iter id acc (lo.substArg i r) (hi.substArg i r) incl (f.substArg i r) (i0.substArg i r) (b.substArg i r)
+  | x => x
+
 partial def E.substVar (e : E) (v : Nat) (r : E) : E :=
   match e with
   | .lvar w => if w == v then r else .lvar w
@@ -220,6 +238,7 @@ structure Ctx where
   depth  : Nat := 0               -- inlining depth of ℤ-valued helpers
   strong : Bool := false          -- unary strong recursion: self-calls read the table
   strong2 : Bool := false         -- binary strong recursion: self-calls read the 2-D table
+  diag   : Option (Array Nat × Array Expr × Nat) := none  -- diagonal recursion: positions, pattern fvars, accumulator
 
 abbrev TrM := ExceptT String MetaM
 
@@ -577,6 +596,15 @@ partial def tr (c : Ctx) (e : Expr) : TrM E := do
   if fn == c.self && c.strong2 && args.size == 2 then return .tab2 (← tr c args[0]!) (← tr c args[1]!)
   -- strong recursion: f e reads the table of earlier values (e < current index, checked at runtime)
   if fn == c.self && c.strong && args.size == 1 then return .tab (← tr c args[0]!)
+  -- diagonal recursion: f with the pattern variables at the recursive positions reads the accumulator
+  if fn == c.self && c.diag.isSome then
+    let some (ps, pvs, acc) := c.diag | bail "unreachable"
+    unless args.size == c.args.size do bail "partial recursive call"
+    for h : i in [0:args.size] do
+      match ps.findIdx? (· == i) with
+      | some k => unless args[i] == pvs[k]! do bail "diagonal recursion: call not on the predecessor"
+      | none => unless args[i] == c.args[i]! do bail "diagonal recursion: other arguments change"
+    return .lvar acc
   -- recursive call
   if fn == c.self then
     let some j := c.recArg | bail "recursion in a non-recursive equation"
@@ -1068,6 +1096,85 @@ def sigOf? (ty : Expr) : MetaM (Option (Nat × Kind)) :=
       unless isNatTy (← inferType x) do return none
       unless (← x.fvarId!.getBinderInfo).isExplicit do return none
     return some (xs.size, k)
+
+/-- Diagonal recursion (MathIR v21): base equations `f … 0 …` (a literal 0 at one of the positions
+P, matched in declaration order) and one step `f … (x_p + 1) … = rhs` over all p ∈ P with self-calls
+`f … x_p …`. With m = min_{p∈P} a_p, the value is the first applicable base at a - m, followed by
+m step applications. -/
+def extractDiag (n : Name) (arity : Nat) (eqns : Array Name) : MetaM (Except String FnDef) := do
+  let ctr ← IO.mkRef 0
+  -- the step equation: offset-1 patterns on ≥ 2 positions, variables elsewhere
+  let mut stepEq? : Option Name := none
+  let mut ps : Array Nat := #[]
+  for eqn in eqns do
+    let thm ← getConstInfo eqn
+    let pos? ← forallTelescope thm.type fun _ eq => do
+      let some (_, lhs, _) := eq.eq? | return none
+      let largs := lhs.getAppArgs
+      if largs.size != arity then return none
+      let pos := (List.range arity).filter fun i => (offsetPattern? largs[i]!).any (fun (m, k) => k == 1 && m != largs[i]!)
+      let others := (List.range arity).filter fun i => !pos.contains i
+      if pos.length ≥ 2 && others.all (fun i => largs[i]!.isFVar) then return some pos.toArray else return none
+    if let some pos := pos? then
+      if stepEq?.isSome then return .error "diagonal recursion: several step equations"
+      stepEq? := some eqn; ps := pos
+  let some stepEq := stepEq? | return .error "patterns on more than one argument"
+  -- m = min over P of the arguments
+  let argE := fun (i : Nat) => E.arg i
+  let m := ps.toList.tail.foldl (fun acc i => E.prim "min" [acc, argE i]) (argE ps[0]!)
+  -- bases, in declaration order: literal 0 at one position of P
+  let mut bases : Array (Nat × E) := #[]
+  for eqn in eqns do
+    if eqn == stepEq then continue
+    let thm ← getConstInfo eqn
+    let r ← forallTelescope thm.type fun _ eq => do
+      let some (_, lhs, rhs) := eq.eq? | return Except.error "equation is not an Eq"
+      let largs := lhs.getAppArgs
+      if largs.size != arity then return .error "partial application in equation"
+      let zs := (List.range arity).filter fun i => natLit? largs[i]! == some 0
+      let some z := zs.head? | return .error "diagonal recursion: base without a literal 0"
+      unless zs.length == 1 && ps.contains z do return .error "diagonal recursion: unsupported base pattern"
+      for i in List.range arity do
+        unless i == z || largs[i]!.isFVar do return .error "diagonal recursion: unsupported base pattern"
+      -- translate the base at the reduced point: positions in P are a_q - m, others a_i
+      let fv := (List.range arity).filterMap fun i => if i == z then none else some (i, largs[i]!)
+      let c : Ctx := { self := n, args := largs, idx? := none, recArg := none, ctr }
+      match ← (tr c rhs).run with
+      | .error r => return .error r
+      | .ok e0 =>
+        -- base arguments are arguments of f at the reduced point
+        let e := fv.foldl (fun e (i, _) => if ps.contains i then e.substArg i (E.bin "sub" (.arg i) m) else e) e0
+        return .ok (z, e)
+    match r with
+    | .error e => return .error e
+    | .ok b => bases := bases.push b
+  if bases.isEmpty then return .error "diagonal recursion: no base equation"
+  -- the step: pattern variables x_p ↦ (a_p - m) + i at iteration i; the self-call reads the accumulator
+  let id ← ctr.modifyGet fun k => (k, k + 1)
+  let acc := accBase + (← ctr.modifyGet fun k => (k, k + 1))
+  let thm ← getConstInfo stepEq
+  let r ← forallTelescope thm.type fun _ eq => do
+    let some (_, lhs, rhs) := eq.eq? | return Except.error "equation is not an Eq"
+    let largs := lhs.getAppArgs
+    let mut pvs : Array Expr := #[]
+    let mut loops : Array (Expr × Nat) := #[]
+    let mut pids : Array Nat := #[]
+    for p in ps do
+      let some (x, _) := offsetPattern? largs[p]! | return .error "unreachable"
+      let pid ← ctr.modifyGet fun k => (k, k + 1)
+      pvs := pvs.push x; loops := loops.push (x, pid); pids := pids.push pid
+    let c : Ctx := { self := n, args := largs, idx? := none, recArg := none, ctr, loops, diag := some (ps, pvs, acc) }
+    match ← (tr c rhs).run with
+    | .error r => return .error r
+    | .ok body =>
+      let body := (List.range ps.size).foldl (fun e k =>
+        e.substVar pids[k]! (E.bin "add" (E.bin "sub" (.arg ps[k]!) m) (.lvar id))) body
+      return .ok body
+  let body ← match r with | .error e => return .error e | .ok b => pure b
+  -- base value at the reduced point: the first base (declaration order) whose position is 0 there
+  let init := bases.toList.reverse.foldl (fun rest (z, e) =>
+    E.ite (.cmp "eq" (E.bin "sub" (.arg z) m) (.lit 0)) e rest) (.lit 0)
+  return .ok (.direct arity (.iter id acc (.lit 0) m false (.lit 1) init body))
 
 /-- Read the definition from its equation lemmas (or, if it has none, its body). Predicates are
 read from their body only (a recursive predicate elaborates to a recursor and is rejected). -/
@@ -3404,7 +3511,13 @@ set_option maxHeartbeats 0 in
   for (n, k) in cands do
     progress s!"extract {n}"
     -- a `bail` (unsupported construct) blocks the function; an exception is a translator bug
-    match ← (try (Sum.inl <$> extract n k (kinds.getD n .nat)) catch e => do pure (.inr (← e.toMessageData.toString))) with
+    let ex : MetaM (Except String FnDef) := do
+      let r ← extract n k (kinds.getD n .nat)
+      if (r matches .error "patterns on more than one argument" || r matches .error "equations recurse on different arguments")
+          && kinds.getD n .nat == .nat then
+        if let some eqns ← getEqnsFor? n then return ← extractDiag n k eqns
+      return r
+    match ← (try (Sum.inl <$> ex) catch e => do pure (.inr (← e.toMessageData.toString))) with
     | .inl (.ok d) => defs := defs.insert n d
     | .inl (.error r) => blocked := blocked.push (n, r)
     | .inr msg => internal := internal.push (n, msg)

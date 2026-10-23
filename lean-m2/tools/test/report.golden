@@ -1,4 +1,4 @@
-MATHIR candidates=29 translated=26 blocked=3 cases=4549 ok=3817 overflow=732 skipped_over_budget=464 ir_fidelity_mismatches=0
+MATHIR candidates=31 translated=28 blocked=3 cases=5033 ok=4301 overflow=732 skipped_over_budget=460 ir_fidelity_mismatches=0
 translated:
   T.AllSmallOdd (1-ary, prop)
   T.AllSmallOdd2 (1-ary, prop)
@@ -12,8 +12,10 @@ translated:
   T.anyDiv (1-ary, bool)
   T.catalan (1-ary, strong)
   T.catalan' (1-ary, strong)
+  T.diagSum (2-ary)
   T.gaps (1-ary)
   T.iter3 (2-ary)
+  T.johnsonBound (3-ary)
   T.lastDigit (1-ary)
   T.ones (1-ary)
   T.pascal (2-ary, strong2)

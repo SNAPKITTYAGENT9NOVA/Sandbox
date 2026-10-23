@@ -129,3 +129,15 @@ def pascal (n k : Nat) : Nat :=
 termination_by n
 decreasing_by all_goals omega
 end T
+namespace T
+/-- diagonal recursion (Erdős 835's johnsonBound, verbatim) -/
+def johnsonBound : Nat → Nat → Nat → Nat
+  | 0, _d, _w => 1
+  | _n, _d, 0 => 1
+  | n + 1, d, w + 1 => if 2 * (w + 1) < d then 1 else (n + 1) * johnsonBound n d w / (w + 1)
+/-- diagonal recursion with argument-dependent bases -/
+def diagSum : Nat → Nat → Nat
+  | 0, w => w + 7
+  | n, 0 => 2 * n
+  | n + 1, w + 1 => diagSum n w + n * w + 1
+end T
